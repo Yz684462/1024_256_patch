@@ -6,7 +6,7 @@ INCDIR = include
 TESTDIR = test
 
 # Source files
-SOURCES = $(SRCDIR)/main.cpp $(SRCDIR)/patch.cpp $(SRCDIR)/addr.cpp $(SRCDIR)/handle.cpp $(SRCDIR)/vector_context.cpp $(SRCDIR)/cpu.cpp $(SRCDIR)/config.cpp $(SRCDIR)/globals.cpp $(SRCDIR)/addr_analysis.cpp
+SOURCES = $(SRCDIR)/main.cpp $(SRCDIR)/patch.cpp $(SRCDIR)/addr.cpp $(SRCDIR)/handle.cpp $(SRCDIR)/vector_context.cpp $(SRCDIR)/cpu.cpp $(SRCDIR)/config.cpp $(SRCDIR)/globals.cpp $(SRCDIR)/addr_analysis.cpp $(SRCDIR)/binary.cpp $(SRCDIR)/thread.cpp
 
 # Object files
 OBJECTS = $(SOURCES:.cpp=.o)
@@ -16,11 +16,11 @@ TARGET = framework
 
 # Test targets
 TEST_TARGET = test_addr
-TEST_SOURCES = $(TESTDIR)/test_addr.cpp $(SRCDIR)/addr.cpp $(SRCDIR)/addr_init.cpp $(SRCDIR)/addr_analysis.cpp $(SRCDIR)/config.cpp $(SRCDIR)/globals.cpp
+TEST_SOURCES = $(TESTDIR)/test_addr.cpp $(SRCDIR)/addr.cpp $(SRCDIR)/addr_analysis.cpp $(SRCDIR)/config.cpp $(SRCDIR)/globals.cpp $(SRCDIR)/binary.cpp
 TEST_OBJECTS = $(TEST_SOURCES:.cpp=.o)
 
 # Link flags
-LDFLAGS = $(shell pkg-config --libs r_core) -ldl -lpthread
+LDFLAGS = -ldl -lpthread
 
 .PHONY: all clean test test-run
 
