@@ -5,8 +5,13 @@
 #include <vector>
 #include <map>
 #include <string>
-#include <r_core.h>
-#include <r_anal.h>
+#include <algorithm>
+#include <stack>
+#include <set>
+#include <iostream>
+#include "globals.h"
+#include "config.h"
+#include "binary.h"
 
 // Source attribute enumeration
 enum class SourceAttrib {
@@ -28,46 +33,40 @@ struct Source {
 // Vector instruction structure
 struct VectorInst {
     uint64_t inst_addr;           // Instruction address
-    uint32_t inst_size;           // Instruction length in bytes
-    std::string mnemonic;         // Instruction mnemonic
-    std::map<int, Source*> reg_sources;  // Register -> Source map
-    RAnalBlock* parent_block;     // Parent basic block pointer
+    int inst_size;                // Instruction length
+    std::string mnemonic;          // Instruction mnemonic
+    CodeBlock* parent_block;      // Parent basic block pointer
+    std::vector<int> operands;    // Register operands as numbers
+    std::map<int, Source*> reg_sources;  // Register to source mapping
     
-    VectorInst(uint64_t addr, uint32_t size, const std::string& mnem, RAnalBlock* block, const std::vector<int>& reg_nums) 
-        : inst_addr(addr), inst_size(size), mnemonic(mnem), parent_block(block) {
-        // Initialize reg_sources with empty sources for all vector registers
-        for (int reg_num : reg_nums) {
-            if (reg_num >= 0 && reg_num < 32) {
-                reg_sources[reg_num] = nullptr;
-            }
-        }
-    }
+    VectorInst(uint64_t addr, int size, const std::string& mnemonic, 
+                CodeBlock* block, const std::vector<int>& regs)
+        : inst_addr(addr), inst_size(size), mnemonic(mnemonic), 
+          parent_block(block), operands(regs) {}
 };
 
 namespace AddrAnalysis {
 
-// Main analysis function - returns translation ranges
-std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RCore *core, RAnalFunction *func);
+// Function declarations
+bool is_vector_assignment(const std::string& mnemonic);
+bool is_vector_instruction(const std::string& mnemonic);
 
-// New algorithm functions
-void init_sources_insts(RCore *core, RAnalFunction *func, 
+void init_sources_insts(std::vector<CodeBlock*>& code_blocks,
                        std::vector<Source*>& sources, 
                        std::map<uint64_t, VectorInst*>& insts);
 
-void tag_sources(RCore *core, RAnalFunction *func,
-                  std::vector<Source*>& sources, 
-                  std::map<uint64_t, VectorInst*>& insts);
+void tag_sources(std::vector<CodeBlock*>& code_blocks,
+                std::vector<Source*>& sources, 
+                std::map<uint64_t, VectorInst*>& insts);
 
 void judge_sources(std::vector<Source*>& sources, 
-                    std::map<uint64_t, VectorInst*>& insts);
+                 std::map<uint64_t, VectorInst*>& insts);
 
 std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
     std::vector<Source*>& sources, 
     std::map<uint64_t, VectorInst*>& insts);
 
-// Helper functions
-bool is_vector_assignment(const std::string& mnemonic);
-bool is_vector_instruction(const std::string& mnemonic);
+std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register_binary(std::vector<CodeBlock*>& code_blocks);
 
 } // namespace AddrAnalysis
 
