@@ -15,66 +15,35 @@ const std::vector<std::string> return_instr = {"ret"};
 const std::vector<std::string> jmp_indirect_instr = {"jalr", "jr"};
 const std::vector<std::string> other_instr = {"ebreak"};
 
-// Core classes
-class Instruction {
-public:
-    uint64_t address;
-    std::string opcode;
-    std::vector<std::string> operands;
-    int instrlen;
-    std::vector<uint64_t> jumpto;
-    std::vector<uint64_t> jumpfrom;
-    bool isblockbegin;
-    bool isblockend;
-    bool isret;
+Instruction::Instruction(const std::string& opcode, const std::string& operand, 
+uint64_t address, int instrlen): address(address), opcode(opcode), instrlen(instrlen), 
+        isblockbegin(false), isblockend(false), isret(false) {
+    this->operands = split_operand(operand);
+}
 
-    Instruction(const std::string& opcode, const std::string& operand, 
-                uint64_t address = 0x0000, int instrlen = 0)
-        : address(address), opcode(opcode), instrlen(instrlen), 
-          isblockbegin(false), isblockend(false), isret(false) {
-        
-        this->operands = split_operand(operand);
+
+CodeBlock::CodeBlock(const std::vector<Instruction*>& instructions)
+    : instructions(instructions) {
+    
+    if (!instructions.empty()) {
+        startaddr = instructions[0]->address;
+        endaddr = instructions.back()->address;
+        jumpto = instructions.back()->jumpto;
+        jumpfrom = instructions[0]->jumpfrom;
     }
-};
+}
 
-class CodeBlock {
-public:
-    std::vector<Instruction*> instructions;
-    uint64_t startaddr;
-    uint64_t endaddr;
-    std::vector<uint64_t> jumpto;
-    std::vector<uint64_t> jumpfrom;
+Binary::Binary(const std::string& dump_path, uint64_t addr) {
+    auto [instrs, errs] = disam_binary_with_dump_func_contain_addr(dump_path, addr);
+    code_blocks = get_codeblocks_linear(instrs);
+}
 
-    CodeBlock(const std::vector<Instruction*>& instructions)
-        : instructions(instructions) {
-        
-        if (!instructions.empty()) {
-            startaddr = instructions[0]->address;
-            endaddr = instructions.back()->address;
-            jumpto = instructions.back()->jumpto;
-            jumpfrom = instructions[0]->jumpfrom;
-        }
+Binary::~Binary() {
+    // Clean up allocated memory
+    for (auto* block : code_blocks) {
+        delete block;
     }
-};
-
-class Binary {
-public:
-    std::vector<CodeBlock*> code_blocks;
-
-    Binary(const std::string& dump_path, uint64_t addr) {
-        
-        auto [instrs, errs] = disam_binary_with_dump_func_contain_addr(dump_path, addr);
-        code_blocks = get_codeblocks_linear(instrs);
-    }
-
-    ~Binary() {
-        // Clean up allocated memory
-        for (auto* block : code_blocks) {
-            delete block;
-        }
-    }
-};
-
+}
 
 // Utility functions
 std::vector<std::string> split_operand(const std::string& operand) {
@@ -281,7 +250,7 @@ std::vector<CodeBlock*> get_codeblocks_linear(const std::vector<Instruction*>& i
     
     int idx = 0;
     for (const auto& ins : blocks) {
-        codeblocks.push_back(new CodeBlock(ins, idx));
+        codeblocks.push_back(new CodeBlock(ins));
         idx++;
     }
     

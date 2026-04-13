@@ -4,11 +4,11 @@
 #include "common.h"
 
 // Instruction type definitions
-const std::vector<std::string> jmp_instr = {"j", "jal"};
-const std::vector<std::string> branch_instr = {"beq", "bne", "beqz", "bnez", "blt", "bge", "bltz", "bgez", "bltu", "bgeu", "blez", "bgtz"};
-const std::vector<std::string> return_instr = {"ret"};
-const std::vector<std::string> jmp_indirect_instr = {"jalr", "jr"};
-const std::vector<std::string> other_instr = {"ebreak"};
+extern const std::vector<std::string> jmp_instr;
+extern const std::vector<std::string> branch_instr;
+extern const std::vector<std::string> return_instr;
+extern const std::vector<std::string> jmp_indirect_instr;
+extern const std::vector<std::string> other_instr;
 
 
 // Core classes
