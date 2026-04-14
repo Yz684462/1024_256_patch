@@ -111,27 +111,54 @@ void addjumpto_target(Instruction* instr) {
     std::string target;
     if (contains(jmp_instr, instr->opcode)) {
         target = instr->operands[0];
+        
+        // For jump instructions, only add jump target
+        if (target.substr(0, 2) == "0x") {
+            target = target.substr(2);
+        }
+        uint64_t addr = std::stoull(target, nullptr, 16);
+        instr->jumpto.push_back(addr);
+        
+        std::cout << "[DEBUG][addjumpto_target] Jump instruction " << instr->opcode 
+                  << " at 0x" << std::hex << instr->address << " -> 0x" << addr << std::dec << std::endl;
     } 
     else if (contains(branch_instr, instr->opcode)) {
         target = instr->operands.back();
+        
+        // For branch instructions, add both branch target and next instruction
+        if (target.substr(0, 2) == "0x") {
+            target = target.substr(2);
+        }
+        uint64_t branch_addr = std::stoull(target, nullptr, 16);
+        instr->jumpto.push_back(branch_addr);
+        
+        // Add next instruction address
+        uint64_t next_instr_addr = instr->address + instr->instrlen; 
+        instr->jumpto.push_back(next_instr_addr);
+        
+        std::cout << "[DEBUG][addjumpto_target] Branch instruction " << instr->opcode 
+                  << " at 0x" << std::hex << instr->address << " -> 0x" << branch_addr 
+                  << " and next 0x" << next_instr_addr << std::dec << std::endl;
     }
-    else {
-        return;
+    else if(!contains(jmp_indirect_instr, instr->opcode) && 
+            !contains(return_instr, instr->opcode) && 
+            !contains(other_instr, instr->opcode)){
+        // For non-jump/branch instructions, add next instruction address
+        uint64_t next_instr_addr = instr->address + instr->instrlen;
+        instr->jumpto.push_back(next_instr_addr);
+        
+        std::cout << "[DEBUG][addjumpto_target] Regular instruction " << instr->opcode 
+                  << " at 0x" << std::hex << instr->address << " -> next 0x" 
+                  << next_instr_addr << std::dec << std::endl;
     }
-    if (target.substr(0, 2) == "0x") {
-        target = target.substr(2);
-    }
-    uint64_t addr = std::stoull(target, nullptr, 16);
-    instr->jumpto.push_back(addr);
 }
 
 void identify_blockend(Instruction* instr) {
     if (contains(jmp_instr, instr->opcode) || contains(branch_instr, instr->opcode)) {
         instr->isblockend = true;
-        addjumpto_target(instr);
     } else if (contains(jmp_indirect_instr, instr->opcode) || 
-               contains(return_instr, instr->opcode) || 
-               contains(other_instr, instr->opcode)) {
+    contains(return_instr, instr->opcode) || 
+    contains(other_instr, instr->opcode)) {
         instr->isblockend = true;
     }
 }
@@ -188,8 +215,9 @@ parse_objdump_output(const std::string& dump_content) {
             operand_str.erase(operand_str.find_last_not_of(" \t") + 1);
             
             Instruction* i = new Instruction(opcode, operand_str, address, instrlen);
-            identify_blockend(i);
             instructions[address] = i;
+            identify_blockend(i);
+            addjumpto_target(i);
         }
     }
     
