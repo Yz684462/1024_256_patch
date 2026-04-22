@@ -1,8 +1,8 @@
 #include "utils.h"
-#include "globals.h"
 #include <dlfcn.h>
 #include <utility>
 #include <iostream>
+#include <link.h> 
 
 namespace BinaryTranslation {
 namespace Addr {

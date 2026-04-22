@@ -6,7 +6,7 @@
 #include <utility>
 #include <map>
 
-#include "types.h"
+#include "utils.h"
 
 namespace BinaryTranslation {
     namespace Migration {

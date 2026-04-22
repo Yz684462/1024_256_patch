@@ -28,12 +28,12 @@ protected:
     }
     
     std::vector<BinaryTranslation::Instruction*> test_instructions;
+};
 
-public:
     // Test get_codeblocks_linear function
     TEST_F(CodeBlockTest, GetCodeblocksLinear) {
         std::vector<BinaryTranslation::CodeBlock*> codeblocks = 
-            BinaryTranslation::CodeBlock::get_codeblocks_linear(test_instructions);
+            BinaryTranslation::CodeBlock_SPACE::get_codeblocks_linear(test_instructions);
         
         // Should return one codeblock containing all instructions
         EXPECT_EQ(codeblocks.size(), 1);
@@ -55,7 +55,7 @@ public:
     // Test with empty instructions
     TEST_F(CodeBlockTest, EmptyInstructions) {
         std::vector<BinaryTranslation::CodeBlock*> empty_blocks = 
-            BinaryTranslation::CodeBlock::get_codeblocks_linear({});
+            BinaryTranslation::CodeBlock_SPACE::get_codeblocks_linear({});
         
         EXPECT_TRUE(empty_blocks.empty());
     }
@@ -66,7 +66,7 @@ public:
         single_instr.push_back(new BinaryTranslation::Instruction("nop", "", 0x2000, 4));
         
         std::vector<BinaryTranslation::CodeBlock*> single_blocks = 
-            BinaryTranslation::CodeBlock::get_codeblocks_linear(single_instr);
+            BinaryTranslation::CodeBlock_SPACE::get_codeblocks_linear(single_instr);
         
         EXPECT_EQ(single_blocks.size(), 1);
         EXPECT_EQ(single_blocks[0]->instructions.size(), 1);
@@ -74,4 +74,3 @@ public:
         
         delete single_instr[0];
     }
-};

@@ -1,5 +1,4 @@
 #include "core.h"
-#include "utils.h"
 #include "vector_translation.h"
 
 namespace BinaryTranslation {

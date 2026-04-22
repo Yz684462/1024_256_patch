@@ -1,6 +1,4 @@
 #include "core.h"
-#include "utils.h"
-#include "types.h"
 
 namespace BinaryTranslation {
 namespace Patch {

@@ -1,5 +1,4 @@
 #include "utils.h"
-#include "globals.h"
 #include <utility>
 #include <fstream>
 #include <iostream>
@@ -37,9 +36,9 @@ std::vector<Instruction*> DumpAnalyzer::select_func_content(uint64_t addr_inside
     while (true) {
         uint64_t addr = addr_inside + 0x4 * 20 * i;
         parse_line_at_addr(addr);
-        auto it = parsed_func_addrs_.upper_bound(addr);
+        auto it = parsed_func_addrs_.upper_bound(addr_inside);
         if (it != parsed_func_addrs_.end()) {
-            end_addr = addr;
+            end_addr = *it;
             start_addr = *(--it);
             break;
         }
@@ -65,7 +64,7 @@ std::vector<Instruction*> DumpAnalyzer::select_snippet(std::pair<uint64_t, uint6
     uint64_t end_addr = range.second;
     
     // Iterate through address range and collect instructions
-    for (uint64_t addr = start_addr; addr <= end_addr; ) {
+    for (uint64_t addr = start_addr; addr < end_addr; ) {
         Instruction* instr = parse_line_at_addr(addr);
         if (instr != nullptr) {
             result.push_back(instr);

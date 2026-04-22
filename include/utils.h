@@ -6,9 +6,37 @@
 #include <cstdint>
 #include <string_view>
 #include <map>
-#include "types.h"
+#include <set>
 
 namespace BinaryTranslation {
+    class Instruction {
+        public:
+            uint64_t address;
+            std::string opcode;
+            std::vector<std::string> operands;
+            int instrlen;
+            std::vector<uint64_t> jumpto;
+            std::vector<uint64_t> jumpfrom;
+            bool isblockbegin;
+            bool isblockend;
+            bool isret;
+
+            Instruction(const std::string& opcode, const std::string& operand, 
+                        uint64_t address = 0x0000, int instrlen = 0);
+            
+    };
+
+    class CodeBlock {
+        public:
+            std::vector<Instruction*> instructions;
+            uint64_t startaddr;
+            uint64_t endaddr;
+            std::vector<uint64_t> jumpto;
+            std::vector<uint64_t> jumpfrom;
+
+            CodeBlock(const std::vector<Instruction*>& instructions);
+    };
+
     namespace Utils {
         int reg_name_to_num(std::string reg_name);
     }
@@ -63,6 +91,7 @@ namespace BinaryTranslation {
                 DumpAnalyzer(const DumpAnalyzer&) = delete;
                 DumpAnalyzer& operator=(const DumpAnalyzer&) = delete;
                 
+            public:
                 std::vector<std::string> lines_;
                 std::map<uint64_t, Instruction*> parsed_lines_;
                 std::set<uint64_t> parsed_func_addrs_;
@@ -71,9 +100,16 @@ namespace BinaryTranslation {
 
     } // namespace Dump
 
-    namespace CodeBlock {
 
+    namespace CodeBlock_SPACE {
         // Code block utilities
+
+        inline const std::vector<std::string> jmp_instr = {"j", "jal"};
+        inline const std::vector<std::string> branch_instr = {"beq", "bne", "beqz", "bnez", "blt", "bge", "bltz", "bgez", "bltu", "bgeu", "blez", "bgtz"};
+        inline const std::vector<std::string> return_instr = {"ret"};
+        inline const std::vector<std::string> jmp_indirect_instr = {"jalr", "jr"};
+        inline const std::vector<std::string> other_instr = {"ebreak"};
+
         std::vector<CodeBlock*> get_codeblocks_linear(const std::vector<Instruction*>& instructions);
 
     } // namespace CodeBlock

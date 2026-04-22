@@ -1,7 +1,5 @@
 #include "core.h"
-#include "utils.h"
 #include "vector_translation.h"
-#include "globals.h"
 
 namespace BinaryTranslation {
 namespace Handler {

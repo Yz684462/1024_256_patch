@@ -7,7 +7,7 @@
 #include <string>
 #include <ucontext.h>
 #include <mutex>
-#include "types.h"
+#include "utils.h"
 
 namespace BinaryTranslation {
     
