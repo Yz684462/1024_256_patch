@@ -66,7 +66,8 @@ namespace BinaryTranslation {
                 TranslationHandleManager(const TranslationHandleManager&) = delete;
                 TranslationHandleManager& operator=(const TranslationHandleManager&) = delete;
 
-                void make_dump_fragments_file(std::vector<std::pair<uint64_t, uint64_t>> ranges);
+            public:
+                void make_dump_fragments_file(std::vector<std::pair<uint64_t, uint64_t>> ranges, std::string dump_fragments_file_path);
                 
                 std::map<int, void*> id_handle_map_;
         };

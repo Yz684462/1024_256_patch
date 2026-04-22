@@ -52,7 +52,7 @@ std::vector<std::pair<uint64_t, uint64_t>> get_translation_ranges(std::vector<Co
     for(CodeBlock *block : code_blocks) {
         for(Instruction *inst : block->instructions) {
             if(need_translation(inst)) {
-                translation_addr_sizes.insert(std::make_pair(inst->address, inst->size));
+                translation_addr_sizes.insert(std::make_pair(inst->address, inst->instrlen));
             }
         }
     }

@@ -1,8 +1,19 @@
 #include "vector_translation.h"
 #include "utils.h"
+#include <dlfcn.h>
+#include <iostream>
 
 namespace BinaryTranslation {
 namespace TranslationSharedLib {
+
+TranslationHandleManager& TranslationHandleManager::getInstance() {
+    static TranslationHandleManager instance;
+    return instance;
+}
+
+void TranslationHandleManager::update_translation_handle(int translation_id, void *new_translation_handle) {
+    id_handle_map_[translation_id] = new_translation_handle;
+}
 
 void call_translation_func(void *translation_handle, uint64_t fault_addr) {
     std::string func_name = make_func_name(fault_addr);
@@ -34,12 +45,6 @@ void * TranslationHandleManager::get_current_translation_shared_lib_handle() {
     return nullptr;
 }
 
-void TranslationHandleManager::update_translation_handle(int translation_id, void *new_translation_handle) {
-    TranslationId::TranslationIdManager& id_manager = TranslationId::TranslationIdManager::getInstance();
-    id_manager.set_current_translation_id(translation_id);
-    id_handle_map_[translation_id] = new_translation_handle;
-}
-
 void TranslationHandleManager::make_dump_fragments_file(std::vector<std::pair<uint64_t, uint64_t>> ranges, std::string dump_fragments_file_path) {
     std::vector<std::string> dump_fragments;
     Dump::DumpAnalyzer& dump_analyzer = Dump::DumpAnalyzer::getInstance();
@@ -48,7 +53,7 @@ void TranslationHandleManager::make_dump_fragments_file(std::vector<std::pair<ui
         int line_number_start = dump_analyzer.addr_to_line_number(range.first);
         int line_number_end = dump_analyzer.addr_to_line_number(range.second);
         for (int line_number = line_number_start; line_number < line_number_end; line_number++) {
-            dump_fragment += dump_analyzer.extract_line_by_line_number(line_number);
+            dump_fragment += dump_analyzer.extract_line_by_line_number(line_number) + "\n";
         }
         dump_fragments.push_back(dump_fragment);
     }

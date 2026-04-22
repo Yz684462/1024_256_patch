@@ -8,6 +8,7 @@ handling multiple address ranges and thread-specific offsets for simulated CPU s
 
 import sys
 import os
+import re
 import tempfile
 import subprocess
 from typing import List, Tuple
@@ -15,15 +16,15 @@ from typing import List, Tuple
 # Constants
 pool_name = 'global_simulated_vector_contexts_pool'
 cc = "gcc"
-
+VECTOR_CONTEXT_SIZE = 4192
 
 # Setup path for rvv_sbt_tool
 current_script_path = os.path.abspath(__file__)
 script_dir = os.path.dirname(current_script_path)
 sys.path.append(os.path.join(script_dir, "..", "rvv_sbt_tool"))
 
-from rvv_sbt_tool.rvv_sbt import translate_function
-from rvv_sbt_tool.core.frontend.asm_parser import AsmParser
+from rvv_sbt import translate_function
+from core.frontend.asm_parser import AsmParser
 
 
 class AssemblyTranslator:
@@ -32,7 +33,7 @@ class AssemblyTranslator:
     def __init__(self):
         self.translated_functions = []
     
-    def translate_assembly(self, asm_content: str, func_name: str) -> str:
+    def translate_assembly(self, asm_content: str, func_name: str, translation_id: int) -> str:
         """Translate assembly content to C-compatible function."""
         parser = AsmParser()
         
@@ -51,9 +52,9 @@ class AssemblyTranslator:
             text_only=False,
         )
         
-        return self._modify_translated_code(output, func_name)
+        return self._modify_translated_code(output, translation_id)
     
-    def _modify_translated_code(self, translated: str) -> str:
+    def _modify_translated_code(self, translated: str, translation_id: int) -> str:
         """Modify translated code to handle simulated_cpu_state."""
         lines = translated.splitlines()
         modified_lines = []
@@ -73,6 +74,17 @@ class AssemblyTranslator:
         # Replace simulated_cpu_state with pool_name
         translated = translated.replace('simulated_cpu_state', pool_name)
         
+        offset = translation_id * VECTOR_CONTEXT_SIZE
+        pattern = r'(\s+la\s+t6,\s+global_simulated_vector_contexts_pool)'
+        if offset <= 2047:
+            # Single addi instruction is sufficient
+            replacement = f'\\1\n\taddi\tt6, t6, {offset}'
+        else:
+            # Need to use li + add sequence for large offsets
+            replacement = f'\\1\n\tli\tt0, {offset}\n\tadd\tt6, t6, t0'
+        
+        translated = re.sub(pattern, replacement, translated)
+
         return translated
     
     def split_dump_fragments(self, dump_file: str) -> List[str]:
@@ -84,12 +96,12 @@ class AssemblyTranslator:
         fragments = content.split('\n\n')
         self.fragments =  [fragment.strip() for fragment in fragments if fragment.strip()]
 
-    def process_fragments(self, func_names):
+    def process_fragments(self, func_names, translation_id):
         fragments_processed = []
         for i, fragment in enumerate(self.fragments):
             first_instr = fragment.split('\n')[0].strip()
             pc = first_instr.split()[0].replace(':', '')
-            fragments_processed.append(self.translate_assembly(fragment, func_names[i] + pc))
+            fragments_processed.append(self.translate_assembly(fragment, func_names[i], translation_id))
         self.fragments = fragments_processed
 
     def compile_to_shared_library(self, output_file):
@@ -138,7 +150,7 @@ def parse_arguments() -> Tuple[str, str, list[str], str]:
         sys.exit(1)
     
     try:
-        translation_id = sys.argv[1]
+        translation_id = int(sys.argv[1])
         dump_file = sys.argv[2]
         func_names = sys.argv[3].split(',')
         output_file = sys.argv[4]
@@ -168,8 +180,9 @@ def main():
 
     translator = AssemblyTranslator()
     translator.split_dump_fragments(dump_file)
-    translator.process_fragments(func_names)
+    translator.process_fragments(func_names, translation_id)
     translator.compile_to_shared_library(output_file)
+    compiled_output = "\n\n".join(translator.fragments) 
     print(f"\nTranslation completed successfully: {compiled_output}")
 
 

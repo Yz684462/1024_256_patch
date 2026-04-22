@@ -27,9 +27,6 @@ int TranslationIdManager::get_current_translation_id() {
     // If still not found, assign new translation ID
     int new_id = translation_id_counter_++;
     pid_tid_map_[current_pid] = new_id;
-
-    // release lock
-    lock.unlock();
     
     return new_id;
 }

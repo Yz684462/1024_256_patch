@@ -3,10 +3,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <linux/ptrace.h>
+#include <ucontext.h>
+
 
 #define RISCV_V_MAGIC	0x53465457
 #define MAX_THREADS 64
 #define VECTOR_CONTEXT_SIZE 4192
+
 
 namespace BinaryTranslation {
 namespace VectorContext {
@@ -38,13 +41,13 @@ struct __riscv_v_ext_state* VectorContextManager::get_os_vector_context(ucontext
     struct __riscv_extra_ext_header *ext;
     struct __riscv_v_ext_state *v_ext_state;
     
-    ext = (void *)(&uc->uc_mcontext.__fpregs);
+    ext = (struct __riscv_extra_ext_header *)(&uc->uc_mcontext.__fpregs);
     if (ext->hdr.magic != RISCV_V_MAGIC) {
-        fprintf(stderr, "bad vector magic: %x\n", ext->hdr.magic.magic);
+        fprintf(stderr, "bad vector magic: %x\n", ext->hdr.magic);
         abort();
     }
     
-    v_ext_state = (void *)((char *)(ext) + sizeof(*ext));
+    v_ext_state = (struct __riscv_v_ext_state *)((char *)(ext) + sizeof(*ext));
     return v_ext_state;
 }
 
@@ -53,7 +56,7 @@ void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uin
     struct __riscv_v_ext_state* os_vector_context = get_os_vector_context(uc);
     
     // Save OS vector context to simulated context
-    void* simulated_context = (char*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
+    uint8_t* simulated_context = (uint8_t*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
 
     // Save vector state
     *(uint64_t*)(simulated_context + 0x1000) = (uint64_t)os_vector_context->vstart;
@@ -75,7 +78,7 @@ void VectorContextManager::copy_vc_to_uc(int translation_id, ucontext_t *uc, uin
     struct __riscv_v_ext_state* os_vector_context = get_os_vector_context(uc);
     
     // Restore simulated vector context to OS vector context
-    void* simulated_context = (char*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
+    uint8_t* simulated_context = (uint8_t*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
 
     // Restore vector state from simulated context
     os_vector_context->vstart = *(uint64_t*)(simulated_context + 0x1000);
