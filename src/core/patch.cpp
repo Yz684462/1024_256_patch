@@ -1,5 +1,6 @@
 #include "core.h"
 #include <sys/mman.h>
+#include <iostream> 
 
 namespace BinaryTranslation {
 namespace Patch {
@@ -10,18 +11,22 @@ Patcher& Patcher::getInstance() {
 }
 
 void Patcher::patch_addr(uint64_t addr) {
+    
     size_t page_size = getpagesize();
     uintptr_t page_start = addr & ~(page_size - 1);
-
+    
     // Modify access permissions to make writable
     if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
         return;
     }
-
+    
     auto &dump_analyzer = Dump::DumpAnalyzer::getInstance();
-    Instruction* instr = dump_analyzer.parse_line_at_addr(addr);
+    
+    auto &addr_manager = Addr::AddrManager::getInstance();   
+    
+    Instruction* instr = dump_analyzer.parse_line_at_addr(addr_manager.to_rela(addr));
     int instr_len = instr->instrlen;
-
+    
     if( instr_len == 2){
         uint16_t* ptr = (uint16_t*)addr;
         *ptr = 0x9002; // 2 bytes ebreak
@@ -36,7 +41,7 @@ void Patcher::patch_addr(uint64_t addr) {
         printf("Error: unsupported instruction length: %d\n", instr_len);
         return;
     }
-
+    
     __builtin___clear_cache((void*)addr, (void*)(addr + instr_len));
 }
 

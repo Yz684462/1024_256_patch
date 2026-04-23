@@ -62,7 +62,7 @@ namespace BinaryTranslation {
         };
 
         // Address utilities
-        uint64_t get_shared_lib_base_addr(void *shared_lib_handle);
+        uint64_t get_shared_lib_base_addr(const std::string& shared_lib_name);
 
     } // namespace Addr
 
