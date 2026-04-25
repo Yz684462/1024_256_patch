@@ -21,6 +21,7 @@ void translation_handle(ucontext_t *uc, Instruction *fault_instruction) {
     
     void *translation_handle = translation_handle_manager.get_current_translation_shared_lib_handle();
     TranslationSharedLib::call_translation_func(translation_handle, fault_instruction->address);
+    handle_scalar_register_write(uc, fault_instruction);
     // vc_manager.copy_vc_to_uc(uc, 0, 0xFFFFFFFF);
 }
 
@@ -79,6 +80,23 @@ void handle_translation_function(uint64_t addr){
     // compile and load new shared library
     translation_handle_manager.compile_translation_shared_lib();
     translation_handle_manager.update_translation_handle();
+}
+
+void handle_scalar_register_write(ucontext_t *uc, Instruction *fault_instruction) {
+    if (fault_instruction->opcode.find("vsetvl") == 0) {
+        auto &vector_context_manager =  VectorContext::VectorContextManager::getInstance();
+        auto &translation_id_manager = BinaryTranslation::TranslationId::TranslationIdManager::getInstance();
+
+        std::string target_reg = fault_instruction->operands[0];
+        // TODO: get target address from target_reg
+        int target_reg_index = Utils::reg_name_to_num(target_reg);
+        if (target_reg_index == -1) {
+            printf("Error: invalid register name: %s\n", target_reg.c_str());
+            return;
+        }
+        int translation_id = translation_id_manager.get_current_translation_id();
+        uc->uc_mcontext.__gregs[target_reg_index] = vector_context_manager.read_vl_from_vc(translation_id);
+    }
 }
 
 } // namespace Handle

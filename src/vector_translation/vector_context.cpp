@@ -52,6 +52,10 @@ VectorContextManager& VectorContextManager::getInstance() {
     return instance;
 }
 
+uint64_t VectorContextManager::read_vl_from_vc(int translation_id) {
+    uint8_t* simulated_context = (uint8_t*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
+    return *(uint64_t*)(simulated_context + 0x1020);
+}
 
 void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uint32_t uc_mask) {
     // Get OS vector context
