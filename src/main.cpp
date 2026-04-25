@@ -32,10 +32,6 @@ void init_migration(){
     Migration::migration_addr = (uint64_t)dlsym(handle, "ggml_compute_forward_mul_mat");
     std::cout << "migration_addr is " << std::hex << Migration::migration_addr << std::dec << std::endl;
     
-    
-    Migration::migration_addr = (uint64_t)dlsym(handle, "ggml_graph_compute._omp_fn.0");
-    std::cout << "migration_addr is " << std::hex << Migration::migration_addr << std::dec << std::endl;
-    
     Migration::migration_addr = (uint64_t)dlsym(handle, "ggml_gemv_q4_K_8x8_q8_K");
     std::cout << "migration_addr is " << std::hex << Migration::migration_addr << std::dec << std::endl;
     
