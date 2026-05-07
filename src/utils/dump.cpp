@@ -1,17 +1,16 @@
 #include "utils.h"
-#include <fstream>
 #include "cereal/archives/xml.hpp"
 #include "cereal/archives/json.hpp"
 #include "cereal/archives/binary.hpp"
 #include "cereal/types/map.hpp"
+#include <cereal/types/memory.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
 
+#include <fstream>
+#include <sstream>
 #include <utility>
 #include <iostream>
-#include <regex>
-#include <algorithm>
-#include <cctype>
 #include <stdexcept>
 
 namespace BinaryTranslation {
@@ -56,13 +55,11 @@ namespace BinaryTranslation {
                     
                     if (!addr_str.empty() && addr_str.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos) {
                         try {
-                            uint64_t func_addr = std::stoull(addr_str, nullptr, 16);
                             size_t name_start = lt_pos + 1;
                             std::string func_name = line.substr(name_start, gt_pos - name_start);
                             
                             func_name2insts[func_name] = std::vector<std::shared_ptr<Instruction>>();
-                            current_func_name = func_name;
-                            
+                            current_func_name = func_name;                            
                             continue;
                         } catch (...) {}
                     }
@@ -209,7 +206,7 @@ namespace BinaryTranslation {
             return abs_addr - base_addr;
         }
 
-        std::vector<Instruction*> &OnlineDumpAnalyzer::select_func_content(uint64_t addr_inside_abs){
+        std::vector<Instruction*> OnlineDumpAnalyzer::select_func_content(uint64_t addr_inside_abs){
             uint64_t addr_inside = to_rela(addr_inside_abs);
             std::string func_name = addr2func_name[addr_inside];
             auto& insts_shared_ptrs = func_name2insts[func_name];
@@ -233,7 +230,7 @@ namespace BinaryTranslation {
             return abs_addrs;
         }
 
-        std::string& OnlineDumpAnalyzer::extract_line_by_line_number(long unsigned int line_number) {
+        std::string OnlineDumpAnalyzer::extract_line_by_line_number(long unsigned int line_number) {
             if (line_number >= lines.size()) {
                 std::string ret = "";
                 return ret; // 返回空字符串;

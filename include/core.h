@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <utility>
 #include <map>
+#include <cstdint>
 
 #include "types.h"
 
@@ -22,7 +23,7 @@ namespace BinaryTranslation {
         // void handle_scalar_register_write(ucontext_t *uc, Instruction *fault_instruction);
         
         void handle_translation_function(uint64_t addr_abs);
-        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction, uint64_t fault_pc);
+        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction);
 
     } // namespace Handle
 

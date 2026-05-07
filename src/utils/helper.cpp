@@ -1,6 +1,12 @@
 #include "utils.h"
 #include <unordered_map>
 #include <string>
+#include <link.h>
+#include <dlfcn.h>
+#include <stdexcept>
+#include <iostream>
+#include <fstream>
+#include <cstring>
 
 namespace BinaryTranslation {
     namespace Helper {

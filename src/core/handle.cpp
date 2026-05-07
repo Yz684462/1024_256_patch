@@ -1,15 +1,17 @@
 #include "core.h"
+#include "utils.h"
 // #include "vector_translation.h"
 #include <iostream>
 
 namespace BinaryTranslation {
     namespace Handle {
 
-        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction, uint64_t fault_pc) {
+        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction) {
             uint64_t target_addr = 0;
             if (fault_instruction->opcode == "jal"){
                 // 立即数是有符号数
-                target_addr = std::stoll(fault_instruction->operands[0], nullptr, 16) + fault_pc;
+                auto &dump_analyzer = Dump::OnlineDumpAnalyzer::getInstance();
+                target_addr = dump_analyzer.to_abs(std::stoull(fault_instruction->operands[0], nullptr, 16));
             }
             else if(fault_instruction->opcode == "jalr"){
                 std::string target_reg = fault_instruction->operands[1];
@@ -32,8 +34,8 @@ namespace BinaryTranslation {
         }
 
         void handle_translation_function(uint64_t addr_abs){
-            auto& dump_analyzer = Dump::OnlineDumpAnalyzer::getInstance();
-            auto& patcher = Patch::Patcher::getInstance();
+            auto& dump_analyzer = BinaryTranslation::Dump::OnlineDumpAnalyzer::getInstance();
+            auto& patcher = BinaryTranslation::Patch::Patcher::getInstance();
 
             std::vector<Instruction*> insts = dump_analyzer.select_func_content(addr_abs);
             // auto codeblocks = ControlFlow::get_codeblocks_linear(insts);
@@ -52,8 +54,8 @@ namespace BinaryTranslation {
             }
             std::cout << std::dec << std::endl;
 
-            auto& addrs_to_patch = dump_analyzer.insts_to_abs_addrs(insts_to_patch);
-            for(int i = 0; i < addrs_to_patch.size(); i++){
+            const auto& addrs_to_patch = dump_analyzer.insts_to_abs_addrs(insts_to_patch);
+            for(size_t i = 0; i < addrs_to_patch.size(); i++){
                 patcher.patch_addr(addrs_to_patch[i], insts_to_patch[i]);
             }
 

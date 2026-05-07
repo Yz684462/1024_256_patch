@@ -1,6 +1,7 @@
 #include "core.h"
 #include <sys/mman.h>
 #include <iostream> 
+#include <cstring>
 
 
 namespace BinaryTranslation {
@@ -37,7 +38,10 @@ namespace BinaryTranslation {
         }
 
         void Patcher::patch_addr(uint64_t addr_abs, Instruction* instr) {
-            
+            if (addr_patch_data_.find(addr_abs) != addr_patch_data_.end()){
+                return;
+            }
+
             PageProtector protector(addr_abs);
 
             int instr_len = instr->instrlen;
@@ -75,7 +79,6 @@ namespace BinaryTranslation {
                 uint32_t* ptr = (uint32_t*)addr_abs;
                 *ptr = patch_data.original_bytes_32;
             }
-
             __builtin___clear_cache((void*)addr_abs, (void*)(addr_abs + patch_data.inst_len));
 
             addr_patch_data_.erase(it);

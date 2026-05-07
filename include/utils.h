@@ -5,6 +5,7 @@
 #include <string>
 #include <cstdint>
 #include <map>
+#include <memory>
 
 #include "types.h"
 
@@ -44,29 +45,30 @@ namespace BinaryTranslation {
         };
 
         class OfflineDumpAnalyzer: public BaseDumpAnalyzer{
-            void scan_dump_file(const std::string& filename);
-            void save_to_file(const std::string& filename, SaveFormat format);
+            public:
+                void scan_dump_file(const std::string& filename);
+                void save_to_file(const std::string& filename, SaveFormat format);
         };
         
         class OnlineDumpAnalyzer: public BaseDumpAnalyzer{
             private:
                 uint64_t base_addr;
 
-                uint64_t to_abs(uint64_t rela_addr);
-                uint64_t to_rela(uint64_t abs_addr);
-
+                
                 OnlineDumpAnalyzer(const uint64_t base_addr);
                 ~OnlineDumpAnalyzer() = default;
                 OnlineDumpAnalyzer(const OnlineDumpAnalyzer&) = delete;
                 OnlineDumpAnalyzer& operator=(const OnlineDumpAnalyzer&) = delete;
-
+                
             public:
-                static OnlineDumpAnalyzer& getInstance(const uint64_t base_addr);
+                uint64_t to_abs(uint64_t rela_addr);
+                uint64_t to_rela(uint64_t abs_addr);
+                static OnlineDumpAnalyzer& getInstance(const uint64_t base_addr = 0);
                 void load_from_file(const std::string& filename, SaveFormat format);
-                std::vector<Instruction*>& select_func_content(uint64_t addr_inside_abs);
+                std::vector<Instruction*> select_func_content(uint64_t addr_inside_abs);
                 Instruction* addr_to_inst(uint64_t addr_abs);
                 std::vector<uint64_t> insts_to_abs_addrs(const std::vector<Instruction*>& insts);
-                std::string& extract_line_by_line_number(long unsigned int line_number);
+                std::string extract_line_by_line_number(long unsigned int line_number);
         };
     } // namespace Dump
 
