@@ -48,7 +48,6 @@ void * TranslationHandleManager::get_current_translation_shared_lib_handle() {
 
 void TranslationHandleManager::update_translation_handle() {
     TranslationId::TranslationIdManager& id_manager = TranslationId::TranslationIdManager::getInstance();
-    TranslationSharedLib::TranslationHandleManager& handle_manager = TranslationSharedLib::TranslationHandleManager::getInstance();
     
     int current_translation_id = id_manager.get_current_translation_id();
     std::string shared_lib_name = make_translation_shared_lib_name(current_translation_id);

@@ -4,91 +4,81 @@
 
 
 namespace BinaryTranslation {
-namespace Patch {
+    namespace Patch {
+        PageProtector::PageProtector(uintptr_t addr_abs): page_size(getpagesize()), is_protected(false) {
+            page_start = addr_abs & ~(page_size - 1);
 
-Patcher& Patcher::getInstance() {
-    static Patcher instance;
-    return instance;
-}
+            // 保存原始权限（简化：假设为 RX）
+            original_prot = PROT_READ | PROT_EXEC;
+            
+            // 临时添加写权限
+            int new_prot = original_prot | PROT_WRITE;
+            if (mprotect((void*)page_start, page_size, new_prot) != 0) {
+                std::cout << "Failed to add write permission: " << strerror(errno) << std::endl;
+                throw std::runtime_error("mprotect failed");
+            }
+            is_protected = true;
+        }
 
-void Patcher::patch_addr(uint64_t addr) {
-    
-    size_t page_size = getpagesize();
-    uintptr_t page_start = addr & ~(page_size - 1);
-    
-    // Modify access permissions to make writable
-    if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        return;
-    }
-    
-    auto &dump_analyzer = Dump::DumpAnalyzer::getInstance();
-    
-    auto &addr_manager = Addr::AddrManager::getInstance();   
-    
-    std::cout << "address is " << std::hex << addr_manager.to_rela(addr) << std::dec << std::endl;
-    Instruction* instr = dump_analyzer.parse_line_at_addr(addr_manager.to_rela(addr));
-    int instr_len = instr->instrlen;
-    
-    if( instr_len == 2){
-        uint16_t* ptr = (uint16_t*)addr;
-        *ptr = 0x9002; // 2 bytes ebreak
-        addr_patch_data_[addr] = {.original_bytes_16 = 0x0001, .inst_len = 2};
-    }
-    else if( instr_len == 4){
-        uint32_t* ptr = (uint32_t*)addr;
-        *ptr = 0x00100073; // 4 bytes ebreak
-        addr_patch_data_[addr] = {.original_bytes_32 = 0x00100073, .inst_len = 4};
-    }
-    else {
-        printf("Error: unsupported instruction length: %d\n", instr_len);
-        return;
-    }
-    std::cout << "here_6 " << std::endl;
-    
-    __builtin___clear_cache((void*)addr, (void*)(addr + instr_len));
-}
+        PageProtector::~PageProtector() {
+            if (is_protected) {
+                // 恢复原始权限
+                if (mprotect((void*)page_start, page_size, original_prot) != 0) {
+                    std::cout << "Failed to restore original permission: " << strerror(errno) << std::endl;
+                }
+            }
+        }
 
-void Patcher::restore_addr(uint64_t addr) {
-    auto it = addr_patch_data_.find(addr);
-    if (it == addr_patch_data_.end()) {
-        return;
-    }
-    
-    PatchData& patch_data = it->second;
-    size_t page_size = getpagesize();
-    uintptr_t page_start = addr & ~(page_size - 1);
-    
-    // Modify access permissions to make writable
-    if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        return;
-    }
-    
-    if (patch_data.inst_len == 2) {
-        uint16_t* ptr = (uint16_t*)addr;
-        *ptr = patch_data.original_bytes_16;
-    } else if (patch_data.inst_len == 4) {
-        uint32_t* ptr = (uint32_t*)addr;
-        *ptr = patch_data.original_bytes_32;
-    }
-    
-    __builtin___clear_cache((void*)addr, (void*)(addr + patch_data.inst_len));
-    
-    addr_patch_data_.erase(it);
-}
 
-void Patcher::patch_range(std::pair<uint64_t, uint64_t> range) {
-    // FIXME: patch_addr这里不应该保存addr_patch_data_
-    patch_addr(range.first);
-    range_patched_[range.first] = range.second;
-}
 
-uint64_t Patcher::query_range_end(uint64_t start_addr) {
-    auto it = range_patched_.find(start_addr);
-    if (it == range_patched_.end()) {
-        return 0;
-    }
-    return it->second;
-}
+        Patcher& Patcher::getInstance() {
+            static Patcher instance;
+            return instance;
+        }
 
-} // namespace Patch
+        void Patcher::patch_addr(uint64_t addr_abs, Instruction* instr) {
+            
+            PageProtector protector(addr_abs);
+
+            int instr_len = instr->instrlen;
+            if( instr_len == 2){
+                uint16_t* ptr = (uint16_t*)addr_abs;
+                addr_patch_data_[addr_abs] = {.original_bytes_16 = *ptr, .inst_len = 2};
+                *ptr = 0x9002; // 2 bytes ebreak
+            }
+            else if( instr_len == 4){
+                uint32_t* ptr = (uint32_t*)addr_abs;
+                addr_patch_data_[addr_abs] = {.original_bytes_32 = *ptr, .inst_len = 4};
+                *ptr = 0x00100073; // 4 bytes ebreak
+            }
+            else {
+                std::cout << "Error: unsupported instruction length: " << instr_len << std::endl;
+                return;
+            }
+
+            __builtin___clear_cache((void*)addr_abs, (void*)(addr_abs + instr_len));
+        }
+
+        void Patcher::restore_addr(uint64_t addr_abs) {
+            auto it = addr_patch_data_.find(addr_abs);
+            if (it == addr_patch_data_.end()) {
+                return;
+            }
+
+            PageProtector protector(addr_abs);
+            
+            PatchData& patch_data = it->second;
+            if (patch_data.inst_len == 2) {
+                uint16_t* ptr = (uint16_t*)addr_abs;
+                *ptr = patch_data.original_bytes_16;
+            } else if (patch_data.inst_len == 4) {
+                uint32_t* ptr = (uint32_t*)addr_abs;
+                *ptr = patch_data.original_bytes_32;
+            }
+
+            __builtin___clear_cache((void*)addr_abs, (void*)(addr_abs + patch_data.inst_len));
+
+            addr_patch_data_.erase(it);
+        }
+    } // namespace Patch
 } // namespace BinaryTranslation

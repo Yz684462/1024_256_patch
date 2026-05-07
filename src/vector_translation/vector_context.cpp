@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#define _GNU_SOURCE
 #include <ucontext.h>
 #include <linux/ptrace.h>
 
@@ -29,15 +28,13 @@ struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc) {
 namespace BinaryTranslation {
 namespace VectorContext {
 
-VectorContextManager::VectorContextManager() {
-    if (vc_pool_ == nullptr) {
-        // Allocate continuous memory pool for all vector contexts
-        size_t pool_size = MAX_THREADS * VECTOR_CONTEXT_SIZE;
-        vc_pool_ = malloc(pool_size);
-        if (!vc_pool_) {
-            fprintf(stderr, "Failed to allocate vector context pool\n");
-            abort();
-        }
+VectorContextManager::VectorContextManager(): vc_pool_(nullptr) {
+    // Allocate continuous memory pool for all vector contexts
+    size_t pool_size = MAX_THREADS * VECTOR_CONTEXT_SIZE;
+    vc_pool_ = malloc(pool_size);
+    if (!vc_pool_) {
+        fprintf(stderr, "Failed to allocate vector context pool\n");
+        abort();
     }
 }
 
@@ -57,7 +54,7 @@ uint64_t VectorContextManager::read_vl_from_vc(int translation_id) {
     return *(uint64_t*)(simulated_context + 0x1020);
 }
 
-void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uint32_t uc_mask) {
+void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id /*, uint32_t uc_mask*/) {
     // Get OS vector context
     struct __riscv_v_ext_state* os_vector_context = get_os_vector_context(uc);
     
@@ -79,7 +76,7 @@ void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uin
     memcpy(simulated_context, os_vector_context->datap, total_size);
 }
 
-void VectorContextManager::copy_vc_to_uc(int translation_id, ucontext_t *uc, uint32_t vc_mask) {
+void VectorContextManager::copy_vc_to_uc(int translation_id, ucontext_t *uc /*, uint32_t vc_mask*/) {
     // Get OS vector context
     struct __riscv_v_ext_state* os_vector_context = get_os_vector_context(uc);
     

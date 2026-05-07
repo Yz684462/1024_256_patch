@@ -8,7 +8,6 @@
 #include <linux/ptrace.h>
 #include "utils.h"
 
-#define _GNU_SOURCE
 #include <ucontext.h>
 #include <mutex>
 
@@ -88,8 +87,8 @@ namespace BinaryTranslation {
 
             public:
                 static VectorContextManager& getInstance();
-                void copy_uc_to_vc(ucontext_t *uc, int translation_id, uint32_t uc_mask);
-                void copy_vc_to_uc(int translation_id, ucontext_t *uc, uint32_t vc_mask);
+                void copy_uc_to_vc(ucontext_t *uc, int translation_id/*, uint32_t uc_mask*/);
+                void copy_vc_to_uc(int translation_id, ucontext_t *uc/*, uint32_t vc_mask*/);
                 uint64_t read_vl_from_vc(int translation_id);
             private:
                 VectorContextManager();

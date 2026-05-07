@@ -1,60 +1,52 @@
+#include "types.h"
 #include "core.h"
 #include "utils.h"
-#include <dlfcn.h>
-#include <iostream> 
+#include <iostream>
+#include <thread>
+#include <string>
+#include <fstream>
 
 namespace BinaryTranslation {
 
-uint64_t Migration::migration_addr;
+    uint64_t Migration::migration_addr;
 
-void init_migration(){
-    // dump_file_name = "dump.s"
-    Dump::DumpAnalyzer::getInstance("../dump.s");
-    
-    // shared_lib_path = "libggml-cpu.so"
-    uint64_t base_addr = Addr::get_shared_lib_base_addr("libggml-cpu.so");
-    if (base_addr == 0) {
-        std::cerr << "Error getting shared library base address" << std::endl;
-        return;
-    }
-    
-    auto &addr_manager = Addr::AddrManager::getInstance(base_addr);   
-    
-    // migration_addr = 0x37056
-    void *handle = dlopen("libggml-cpu.so", RTLD_NOLOAD | RTLD_LAZY);
-    if(!handle){
-        std::cerr << "Error loading shared library" << std::endl;
-        return;
-    }
+    void init_migration(){
+        std::string dump_data_file_name = "dump.bin";
+        std::string dump_file_name = "dump.s";
+        std::string shared_lib_name = "libggml-cpu.so.0";
 
-    std::cout << "base address is " << std::hex << base_addr << std::dec << std::endl;
-
-    Migration::migration_addr = (uint64_t)dlsym(handle, "ggml_compute_forward_mul_mat");
-    std::cout << "migration_addr is " << std::hex << Migration::migration_addr << std::dec << std::endl;
-    
-    Migration::migration_addr = (uint64_t)dlsym(handle, "ggml_gemv_q4_K_8x8_q8_K");
-    std::cout << "migration_addr is " << std::hex << Migration::migration_addr << std::dec << std::endl;
-    
-    
-
-    if (!Migration::migration_addr) {
-        const char* error = dlerror();
-        if (error) {
-            std::cerr << "Error finding symbol: " << error << std::endl;
+        // 初始化dump分析器
+        std::ifstream dump_data_file(dump_data_file_name);
+        if (!dump_data_file.good()) {
+            auto& offline_dump_analyzer = Dump::OfflineDumpAnalyzer::getInstance();
+            offline_dump_analyzer.scan_dump_file(dump_file_name);
+            offline_dump_analyzer.save_to_file(dump_data_file_name, Dump::SaveFormat::BINARY);
         }
-        dlclose(handle);  // 如果不需要了，可以关闭
-        return;
-    }
-    
-    // patch migration addr
-    auto &patcher = Patch::Patcher::getInstance();
-    patcher.patch_addr(Migration::migration_addr);
-}
+        uint64_t base_addr = Helper::get_shared_lib_base_addr(shared_lib_name);
+        if (base_addr == 0) {
+            std::cout << "Error getting shared library base address, pid = " << getpid() << std::endl;
+            return;
+        }
+        auto& dump_analyzer = Dump::OnlineDumpAnalyzer::getInstance(base_addr);
+        dump_analyzer.load_from_file(dump_data_file_name, Dump::SaveFormat::BINARY);
 
-__attribute__((constructor))
-void init() {
-    Handler::setup_signal_handler();
-    init_migration();
-}
+
+        // patch迁移点
+        uint64_t migration_offset = 0x000;
+        
+        Migration::migration_addr = base_addr + migration_offset;
+        Instruction* migration_instr = dump_analyzer.addr_to_inst(Migration::migration_addr);        
+        auto &patcher = Patch::Patcher::getInstance();
+        patcher.patch_addr(Migration::migration_addr, migration_instr);
+    }
+
+    __attribute__((constructor))
+    void init() {
+        std::cout << "running init " << std::endl;
+        Handler::setup_signal_handler();
+        std::cout << "running setup_signal_handler " << std::endl;
+        init_migration();
+        std::cout << "finished init_migration " << std::endl;
+    }
 
 } // namespace BinaryTranslation

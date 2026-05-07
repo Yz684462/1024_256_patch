@@ -1,6 +1,7 @@
 #include "vector_translation.h"
 #include <vector>
 #include <utility>
+#include <iostream>
 
 namespace BinaryTranslation {
 namespace TranslationRanges {
@@ -47,6 +48,8 @@ std::vector<std::pair<uint64_t, uint64_t>> group_consecutive_addresses(
 }
 
 std::vector<std::pair<uint64_t, uint64_t>> get_translation_ranges(std::vector<CodeBlock*>& code_blocks, uint64_t addr){
+    std::cout << "get ranges of the function including address(" << std::hex << addr << std::dec << ")" << std::endl;
+    
     std::set<std::pair<uint64_t, int>> translation_addr_sizes;
     
     for(CodeBlock *block : code_blocks) {

@@ -4,105 +4,75 @@
 #include <vector>
 #include <string>
 #include <cstdint>
-#include <string_view>
 #include <map>
-#include <set>
+
+#include "types.h"
 
 namespace BinaryTranslation {
-    class Instruction {
-        public:
-            uint64_t address;
-            std::string opcode;
-            std::vector<std::string> operands;
-            int instrlen;
-            std::vector<uint64_t> jumpto;
-            std::vector<uint64_t> jumpfrom;
-            bool isblockbegin;
-            bool isblockend;
-            bool isret;
 
-            Instruction(const std::string& opcode, const std::string& operand, 
-                        uint64_t address = 0x0000, int instrlen = 0);
-            
-    };
-
-    class CodeBlock {
-        public:
-            std::vector<Instruction*> instructions;
-            uint64_t startaddr;
-            uint64_t endaddr;
-            std::vector<uint64_t> jumpto;
-            std::vector<uint64_t> jumpfrom;
-
-            CodeBlock(const std::vector<Instruction*>& instructions);
-    };
-
-    namespace Utils {
+    namespace Helper {
         int reg_name_to_num(std::string reg_name);
-    }
-    namespace Addr {
+        uint64_t get_shared_lib_base_addr(const std::string& shared_lib_name);
+        void write_content_to_file(const std::string& filename, const std::string& content);
+    } // namespace Helper
 
-        // Address manager singleton
-        class AddrManager {
+    namespace Dump {
+        enum class SaveFormat {
+            Binary,  // 二进制格式（最小、最快）
+            JSON,    // JSON 格式（可读性好，便于调试）
+            XML      // XML 格式（可读性好，兼容性好）
+        };
+
+        class BaseDumpAnalyzer{
             public:
-                static AddrManager& getInstance(uint64_t base_addr = 0);
+                // dump文件内容
+                std::vector<std::string> lines;
+            
+                // 地址 -> 指令智能指针
+                std::map<uint64_t, std::shared_ptr<Instruction>> addr2inst;
                 
+                // 地址 -> 行号
+                std::map<uint64_t, int> addr2line_number;
+                
+                // 地址 -> 函数名
+                std::map<uint64_t, std::string> addr2func_name;
+                
+                // 函数名 -> 指令智能指针列表
+                std::map<std::string, std::vector<std::shared_ptr<Instruction>>> func_name2insts;
+
+                void clear_data();
+        };
+
+        class OfflineDumpAnalyzer: public BaseDumpAnalyzer{
+            void scan_dump_file(const std::string& filename);
+            void save_to_file(const std::string& filename, SaveFormat format);
+        };
+        
+        class OnlineDumpAnalyzer: public BaseDumpAnalyzer{
+            private:
+                uint64_t base_addr;
+
                 uint64_t to_abs(uint64_t rela_addr);
                 uint64_t to_rela(uint64_t abs_addr);
 
-            private:
-                AddrManager(uint64_t base_addr) : base_addr_(base_addr) {}
-                ~AddrManager() = default;
-                
-                // Delete copy constructor and assignment operator
-                AddrManager(const AddrManager&) = delete;
-                AddrManager& operator=(const AddrManager&) = delete;
-                
-                uint64_t base_addr_;
-        };
+                OnlineDumpAnalyzer(const uint64_t base_addr);
+                ~OnlineDumpAnalyzer() = default;
+                OnlineDumpAnalyzer(const OnlineDumpAnalyzer&) = delete;
+                OnlineDumpAnalyzer& operator=(const OnlineDumpAnalyzer&) = delete;
 
-        // Address utilities
-        uint64_t get_shared_lib_base_addr(const std::string& shared_lib_name);
-
-    } // namespace Addr
-
-    namespace Dump {
-
-        // Dump analyzer singleton
-        class DumpAnalyzer {
             public:
-                static DumpAnalyzer& getInstance(const std::string& dump_file = "");
-                
-                std::vector<Instruction*> select_func_content(uint64_t addr_inside);
-                std::vector<Instruction*> select_snippet(std::pair<uint64_t, uint64_t> range);
-                Instruction* parse_line_at_addr(uint64_t addr);
-                Instruction* parse_instr_line(std::string line_content);
-                void parse_func_line(std::string line_content);
-                std::string concat_dump_fragments(const std::vector<std::string>& fragments);
-                void write_dump_fragment_to_file(const std::string& filename, const std::string& content);
-                int addr_to_line_number(uint64_t addr);
-                std::string extract_line_by_line_number(int line_number);
-
-            private:
-                DumpAnalyzer(const std::string& dump_file);
-                ~DumpAnalyzer() = default;
-                
-                // Delete copy constructor and assignment operator
-                DumpAnalyzer(const DumpAnalyzer&) = delete;
-                DumpAnalyzer& operator=(const DumpAnalyzer&) = delete;
-                
-            public:
-                std::vector<std::string> lines_;
-                std::map<uint64_t, Instruction*> parsed_lines_;
-                std::set<uint64_t> parsed_func_addrs_;
-                std::map<uint64_t, int> addr_to_line_map_;
+                static OnlineDumpAnalyzer& getInstance(const uint64_t base_addr);
+                void load_from_file(const std::string& filename, SaveFormat format);
+                std::vector<Instruction*>& select_func_content(uint64_t addr_inside_abs);
+                Instruction* addr_to_inst(uint64_t addr_abs);
+                std::vector<uint64_t> insts_to_abs_addrs(const std::vector<Instruction*>& insts);
+                std::string& extract_line_by_line_number(long unsigned int line_number);
         };
-
     } // namespace Dump
 
 
-    namespace CodeBlock_SPACE {
-        // Code block utilities
+    namespace ControlFlow {
+        // Control flow utilities
 
         inline const std::vector<std::string> jmp_instr = {"j", "jal"};
         inline const std::vector<std::string> branch_instr = {"beq", "bne", "beqz", "bnez", "blt", "bge", "bltz", "bgez", "bltu", "bgeu", "blez", "bgtz"};
@@ -112,7 +82,7 @@ namespace BinaryTranslation {
 
         std::vector<CodeBlock*> get_codeblocks_linear(const std::vector<Instruction*>& instructions);
 
-    } // namespace CodeBlock
+    } // namespace ControlFlow
 
 } // namespace BinaryTranslation
 

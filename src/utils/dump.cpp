@@ -1,6 +1,13 @@
 #include "utils.h"
-#include <utility>
 #include <fstream>
+#include "cereal/archives/xml.hpp"
+#include "cereal/archives/json.hpp"
+#include "cereal/archives/binary.hpp"
+#include "cereal/types/map.hpp"
+#include <cereal/types/vector.hpp>
+#include <cereal/types/string.hpp>
+
+#include <utility>
 #include <iostream>
 #include <regex>
 #include <algorithm>
@@ -8,197 +15,230 @@
 #include <stdexcept>
 
 namespace BinaryTranslation {
-namespace Dump {
-
-DumpAnalyzer& DumpAnalyzer::getInstance(const std::string& dump_file) {
-    static DumpAnalyzer instance(dump_file);
-    return instance;
-}
-
-DumpAnalyzer::DumpAnalyzer(const std::string& dump_file) {
-    std::ifstream file(dump_file);
-    if (!file.is_open()) {
-        std::cout << "[TEST] Warning: Could not open dump file: " << dump_file << std::endl;
-        return;
-    }
-    
-    std::string line;
-    while (std::getline(file, line)) {
-        lines_.push_back(line);
-    }
-    file.close();
-}
-
-std::vector<Instruction*> DumpAnalyzer::select_func_content(uint64_t addr_inside){
-    uint64_t start_addr = 0;
-    uint64_t end_addr = 0;
-    int i = 0;
-    while (true) {
-        uint64_t addr = addr_inside + 0x4 * 20 * i;
-        parse_line_at_addr(addr);
-        auto it = parsed_func_addrs_.upper_bound(addr_inside);
-        if (it != parsed_func_addrs_.end()) {
-            end_addr = *it;
-            start_addr = *(--it);
-            break;
+    namespace Dump {
+        void BaseDumpAnalyzer::clear_data(){
+            addr2inst.clear();
+            addr2line_number.clear();
+            addr2func_name.clear();
+            func_name2insts.clear();
+            lines.clear();
         }
-        i++;
-        if (i > 50) {
-            std::cerr << "[ERROR] Failed to find function at address 0x" << std::hex << addr_inside << std::endl;
-            throw std::runtime_error("Failed to find function in address range");
-        }
-    }
-    
-    std::vector<Instruction*> result;
-    for (uint64_t addr = start_addr; addr < end_addr; ) {
-        auto &inst = parsed_lines_[addr];
-        result.push_back(inst);
-        addr += inst->instrlen;
-    }
-    return result;
-}
 
-std::vector<Instruction*> DumpAnalyzer::select_snippet(std::pair<uint64_t, uint64_t> range){
-    std::vector<Instruction*> result;
-    uint64_t start_addr = range.first;
-    uint64_t end_addr = range.second;
-    
-    // Iterate through address range and collect instructions
-    for (uint64_t addr = start_addr; addr < end_addr; ) {
-        Instruction* instr = parse_line_at_addr(addr);
-        if (instr != nullptr) {
-            result.push_back(instr);
-            // Move to next instruction address
-            addr += instr->instrlen;
-        } else {
-            // Error: no instruction found at this address
-            std::cerr << "[ERROR] No instruction found at address 0x" << std::hex << addr << std::endl;
-            throw std::runtime_error("Failed to find instruction in address range");
-        }
-    }
-    
-    return result;
-}
-
-Instruction* DumpAnalyzer::parse_line_at_addr(uint64_t addr){
-    // First check if the address is already in parsed_lines_
-    auto it = parsed_lines_.find(addr);
-    if (it != parsed_lines_.end()) {
-        return it->second;
-    }
-    
-    // If not found, parse each line until we find the address
-    for (int line_number = 0; line_number < lines_.size(); line_number++) {
-        const std::string& line = lines_[line_number];
-        Instruction* instr = parse_instr_line(line);
-        if (instr != nullptr) {
-            addr_to_line_map_[instr->address] = line_number;
-            if (instr->address == addr) {
-                return instr;
-            } else if (instr->address > addr) {
-                // If we've passed the target address, no need to continue
-                break;
+        void OfflineDumpAnalyzer::scan_dump_file(const std::string& filename) {
+            clear_data();
+            
+            std::ifstream file(filename);
+            if (!file.is_open()) {
+                throw std::runtime_error("Cannot open file: " + filename);
             }
-        } else {
-            // If not an instruction line, try parsing as function line
-            parse_func_line(line);
+            
+            std::string line;
+            int line_number = -1;
+            std::string current_func_name;
+            
+            while (std::getline(file, line)) {
+                line_number++;
+                lines.push_back(line);
+                
+                if (line.empty() || line.find_first_not_of(" \t") == std::string::npos) {
+                    continue;
+                }
+                
+                // 函数定义行
+                size_t lt_pos = line.find('<');
+                size_t gt_pos = line.find('>');
+                size_t colon_pos = line.find(':', gt_pos);
+                
+                if (lt_pos != std::string::npos && gt_pos != std::string::npos && colon_pos != std::string::npos) {
+                    std::stringstream ss(line);
+                    std::string addr_str;
+                    ss >> addr_str;
+                    
+                    if (!addr_str.empty() && addr_str.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos) {
+                        try {
+                            uint64_t func_addr = std::stoull(addr_str, nullptr, 16);
+                            size_t name_start = lt_pos + 1;
+                            std::string func_name = line.substr(name_start, gt_pos - name_start);
+                            
+                            func_name2insts[func_name] = std::vector<std::shared_ptr<Instruction>>();
+                            current_func_name = func_name;
+                            
+                            continue;
+                        } catch (...) {}
+                    }
+                }
+                
+                // 指令行
+                size_t colon_pos_instr = line.find(':');
+                if (colon_pos_instr != std::string::npos) {
+                    std::stringstream ss(line);
+                    std::string addr_str, machine_code, opcode;
+                    
+                    if (std::getline(ss, addr_str, ':')) {
+                        size_t start = addr_str.find_first_not_of(" \t");
+                        if (start != std::string::npos) {
+                            addr_str = addr_str.substr(start);
+                        } else {
+                            continue;
+                        }
+                        
+                        if (addr_str.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) {
+                            continue;
+                        }
+                        
+                        if (!(ss >> machine_code)) continue;
+                        if (machine_code.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) continue;
+                        if (!(ss >> opcode)) continue;
+                        
+                        std::string operand_str;
+                        std::getline(ss, operand_str);
+                        
+                        size_t comment_pos = operand_str.find_first_of("#<");
+                        if (comment_pos != std::string::npos) {
+                            operand_str = operand_str.substr(0, comment_pos);
+                        }
+                        
+                        start = operand_str.find_first_not_of(" \t");
+                        if (start != std::string::npos) {
+                            size_t end = operand_str.find_last_not_of(" \t");
+                            operand_str = operand_str.substr(start, end - start + 1);
+                        } else {
+                            operand_str.clear();
+                        }
+                        
+                        try {
+                            uint64_t address = std::stoull(addr_str, nullptr, 16);
+                            
+                            if (machine_code.length() % 2 != 0) continue;
+                            int instrlen = machine_code.length() / 2;
+                            
+                            // 使用 make_shared 创建智能指针
+                            auto instr = std::make_shared<Instruction>(opcode, operand_str, address, instrlen);
+                            
+                            addr2inst[address] = instr;
+                            addr2line_number[address] = line_number;
+                            addr2func_name[address] = current_func_name;
+                            
+                            if (!current_func_name.empty()) {
+                                auto it = func_name2insts.find(current_func_name);
+                                if (it != func_name2insts.end()) {
+                                    it->second.push_back(instr);
+                                }
+                            }
+                            
+                        } catch (const std::exception& e) {
+                            continue;
+                        }
+                    }
+                }
+            }
+    
+            file.close();
         }
-    }
-    
-    // If still not found, return nullptr
-    return nullptr;
-}
 
-Instruction* DumpAnalyzer::parse_instr_line(std::string line_content){
-    std::regex pattern(R"(^\s*([0-9a-fA-F]+):\s+([0-9a-fA-F]{4,8})\s+([\w.]+)\s*(.*)$)");
-    std::smatch match;
-    
-    if (std::regex_match(line_content, match, pattern)) {
-        std::string address_str = match[1].str();
-        uint64_t address = std::stoull(address_str, nullptr, 16);
-        std::string machine_code = match[2].str();
-        
-        // Remove spaces from machine code and convert to lowercase
-        machine_code.erase(std::remove(machine_code.begin(), machine_code.end(), ' '), machine_code.end());
-        std::transform(machine_code.begin(), machine_code.end(), machine_code.begin(), ::tolower);
-        int instrlen = machine_code.length() / 2;
-
-        std::string opcode = match[3].str();
-        std::string operand_str = match[4].str();
-        
-        // Remove comments after # or <
-        size_t pos = operand_str.find('#');
-        if (pos != std::string::npos) {
-            operand_str = operand_str.substr(0, pos);
+        void OfflineDumpAnalyzer::save_to_file(const std::string& filename, SaveFormat format) {
+            std::ofstream file(filename, std::ios::binary);
+            if (!file.is_open()) {
+                throw std::runtime_error("Cannot open file for writing: " + filename);
+            }
+            
+            switch (format) {
+                case SaveFormat::Binary: {
+                    cereal::BinaryOutputArchive archive(file);
+                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    break;
+                }
+                case SaveFormat::JSON: {
+                    cereal::JSONOutputArchive archive(file);
+                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    break;
+                }
+                case SaveFormat::XML: {
+                    cereal::XMLOutputArchive archive(file);
+                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    break;
+                }
+            }
+            
+            file.close();
         }
-        pos = operand_str.find('<');
-        if (pos != std::string::npos) {
-            operand_str = operand_str.substr(0, pos);
+
+        void OnlineDumpAnalyzer::load_from_file(const std::string& filename, SaveFormat format) {
+            std::ifstream file(filename, std::ios::binary);
+            if (!file.is_open()) {
+                throw std::runtime_error("Cannot open file for reading: " + filename);
+            }
+            
+            clear_data();
+
+            switch (format) {
+                case SaveFormat::Binary: {
+                    cereal::BinaryInputArchive archive(file);
+                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    break;
+                }
+                case SaveFormat::JSON: {
+                    cereal::JSONInputArchive archive(file);
+                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    break;
+                }
+                case SaveFormat::XML: {
+                    cereal::XMLInputArchive archive(file);
+                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    break;
+                }
+            }
+            
+            file.close();
         }
-        operand_str.erase(0, operand_str.find_first_not_of(" \t"));
-        operand_str.erase(operand_str.find_last_not_of(" \t") + 1);
-        
-        Instruction* instr = new Instruction(opcode, operand_str, address, instrlen);
-        parsed_lines_[address] = instr;
-        return instr;
-    }
-    
-    // Return nullptr if pattern doesn't match
-    return nullptr;
-}
 
-void DumpAnalyzer::parse_func_line(std::string line_content) {
-    std::regex func_pattern(R"(^\s*([0-9a-fA-F]+)\s+<.*>.*:$)");
-    std::smatch match;
-    
-    if (std::regex_match(line_content, match, func_pattern)) {
-        std::string func_addr_str = match[1].str();
-        uint64_t func_addr = std::stoull(func_addr_str, nullptr, 16);
-        parsed_func_addrs_.insert(func_addr);  // Mark that we found a function at this address
-    }
-}
-
-std::string DumpAnalyzer::concat_dump_fragments(const std::vector<std::string>& fragments) {
-    std::string result;
-    for (const auto& fragment : fragments) {
-        result += fragment;
-        if (&fragment != &fragments.back()) {
-            result += "\n";  // Add newline between fragments
+        OnlineDumpAnalyzer::OnlineDumpAnalyzer(const uint64_t base_addr){
+            this->base_addr = base_addr;
         }
-    }
-    return result;
-}
 
-void DumpAnalyzer::write_dump_fragment_to_file(const std::string& filename, const std::string& content) {
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "[ERROR] Failed to open file: " << filename << std::endl;
-        throw std::runtime_error("Failed to open file for writing");
-    }
-    
-    file << content;
-    file.close();
-}
+        OnlineDumpAnalyzer& OnlineDumpAnalyzer::getInstance(const uint64_t base_addr){
+            static OnlineDumpAnalyzer instance(base_addr);
+            return instance;
+        }
 
-int DumpAnalyzer::addr_to_line_number(uint64_t addr) {
-    auto it = addr_to_line_map_.find(addr);
-    if (it != addr_to_line_map_.end()) {
-        return it->second;
-    }
-    parse_line_at_addr(addr);
-    it = addr_to_line_map_.find(addr);
-    if (it != addr_to_line_map_.end()) {
-        return it->second;
-    }
-    return -1;  // Return -1 if address not found
-}
+        uint64_t OnlineDumpAnalyzer::to_abs(uint64_t rela_addr){
+            return base_addr + rela_addr;
+        }
 
-std::string DumpAnalyzer::extract_line_by_line_number(int line_number) {
-    if (line_number < 0 || line_number >= lines_.size()) {
-        return "";
-    }
-    return lines_[line_number];
-}
+        uint64_t OnlineDumpAnalyzer::to_rela(uint64_t abs_addr){
+            return abs_addr - base_addr;
+        }
 
-} // namespace Dump
+        std::vector<Instruction*> &OnlineDumpAnalyzer::select_func_content(uint64_t addr_inside_abs){
+            uint64_t addr_inside = to_rela(addr_inside_abs);
+            std::string func_name = addr2func_name[addr_inside];
+            auto& insts_shared_ptrs = func_name2insts[func_name];
+            std::vector<Instruction*> insts_raw_ptrs;
+            for (const auto& inst_shared_ptr : insts_shared_ptrs) {
+                insts_raw_ptrs.push_back(inst_shared_ptr.get());
+            }
+            return insts_raw_ptrs;
+        }
+
+        Instruction* OnlineDumpAnalyzer::addr_to_inst(uint64_t addr_abs){
+            uint64_t addr = to_rela(addr_abs);
+            return addr2inst[addr].get();
+        }
+
+        std::vector<uint64_t> OnlineDumpAnalyzer::insts_to_abs_addrs(const std::vector<Instruction*>& insts) {
+            std::vector<uint64_t> abs_addrs;
+            for (const auto& inst : insts) {
+                abs_addrs.push_back(to_abs(inst->address));
+            }
+            return abs_addrs;
+        }
+
+        std::string& OnlineDumpAnalyzer::extract_line_by_line_number(long unsigned int line_number) {
+            if (line_number >= lines.size()) {
+                std::string ret = "";
+                return ret; // 返回空字符串;
+            }
+            return lines[line_number];
+        }
+    } // namespace Dump
 } // namespace BinaryTranslation
