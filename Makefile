@@ -18,6 +18,7 @@ UTILS_SOURCES = $(wildcard $(SRC_DIR)/utils/*.cpp)
 VECTOR_SOURCES = $(wildcard $(SRC_DIR)/vector_translation/*.cpp)
 MAIN_SOURCE = $(SRC_DIR)/main.cpp
 TYPE_SOURCE = $(SRC_DIR)/types.cpp
+DATA_SOURCE = $(SRC_DIR)/data.S
 
 # Object files
 CORE_OBJECTS = $(CORE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
@@ -25,8 +26,9 @@ UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 VECTOR_OBJECTS = $(VECTOR_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 MAIN_OBJECT = $(MAIN_SOURCE:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 TYPE_OBJECT = $(TYPE_SOURCE:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+DATA_OBJECT = libdata.so
 
-ALL_OBJECTS = $(CORE_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT) $(TYPE_OBJECT)
+ALL_OBJECTS = $(CORE_OBJECTS) $(UTILS_OBJECTS) $(VECTOR_OBJECTS) $(MAIN_OBJECT) $(TYPE_OBJECT) $(DATA_OBJECT)
 
 # Target
 TARGET = inject_lib.so
@@ -36,11 +38,14 @@ all: $(TARGET)
 
 # Create build directory
 $(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)/core $(BUILD_DIR)/utils
+	mkdir -p $(BUILD_DIR)/core $(BUILD_DIR)/utils $(BUILD_DIR)/vector_translation
 
 # Compile source files
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+
+$(DATA_OBJECT): $(DATA_SOURCE)
+	$(CXX) -shared -fPIC $(DATA_SOURCE) -o $@
 
 # Link target
 $(TARGET): $(ALL_OBJECTS)

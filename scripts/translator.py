@@ -10,12 +10,9 @@ import sys
 import os
 import re
 import tempfile
-import subprocess
-from typing import List, Tuple
+from typing import Tuple
 
 # Constants
-pool_name = 'global_simulated_vector_contexts_pool'
-cc = "gcc"
 VECTOR_CONTEXT_SIZE = 4192
 
 # Setup path for rvv_sbt_tool
@@ -33,10 +30,10 @@ class AssemblyTranslator:
     def __init__(self):
         self.translated_functions = []
     
-    def translate_assembly(self, asm_content: str, func_name: str, translation_id: int) -> str:
+    def translate_assembly(self, asm_content: str, func_name: str, translation_id: int, vtype:int) -> str:
         """Translate assembly content to C-compatible function."""
         parser = AsmParser()
-        
+
         # Write assembly content to temporary file for parsing
         with tempfile.NamedTemporaryFile(mode='w', suffix='.s', delete=False) as f:
             f.write(asm_content)
@@ -50,8 +47,9 @@ class AssemblyTranslator:
             vlenb=128,
             source_file=temp_file,
             text_only=False,
+            init_vtype=str(vtype),
         )
-        
+
         return self._modify_translated_code(output, translation_id)
     
     def _modify_translated_code(self, translated: str, translation_id: int) -> str:
@@ -65,17 +63,18 @@ class AssemblyTranslator:
                 continue
             if '.comm' in line and 'simulated_cpu_state' in line:
                 continue
+            if ' ret ' in line:
+                modified_lines.append('ebreak')
+                continue
             modified_lines.append(line)
-            if '.type' in line:
-                modified_lines.append(f'\t.extern {pool_name}')
+            if '.type' in line and f'translated_function_' in line:
+                modified_lines.append(f'\t.extern simulated_cpu_state')
+
         
         translated = '\n'.join(modified_lines)
-        
-        # Replace simulated_cpu_state with pool_name
-        translated = translated.replace('simulated_cpu_state', pool_name)
-        
+                
         offset = translation_id * VECTOR_CONTEXT_SIZE
-        pattern = r'(\s+la\s+t6,\s+global_simulated_vector_contexts_pool)'
+        pattern = r'(\s+la\s+t6,\s+simulated_cpu_state)'
         if offset <= 2047:
             # Single addi instruction is sufficient
             replacement = f'\\1\n\taddi\tt6, t6, {offset}'
@@ -86,50 +85,28 @@ class AssemblyTranslator:
         translated = re.sub(pattern, replacement, translated)
 
         return translated
-    
-    def split_dump_fragments(self, dump_file: str) -> List[str]:
-        """Split dump file into individual function fragments."""
-        with open(dump_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # Split by function markers
-        fragments = content.split('\n\n')
-        self.fragments =  [fragment.strip() for fragment in fragments if fragment.strip()]
 
-    def process_fragments(self, func_names, translation_id):
-        fragments_processed = []
-        for i, fragment in enumerate(self.fragments):
-            first_instr = fragment.split('\n')[0].strip()
-            pc = first_instr.split()[0].replace(':', '')
-            fragments_processed.append(self.translate_assembly(fragment, func_names[i], translation_id))
-        self.fragments = fragments_processed
 
-    def write_to_file(self, output_file):
-        """Write translated assembly to output file."""
-        asm_content = "\n\n".join(self.fragments)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(asm_content)
-
-def parse_arguments() -> Tuple[str, str, list[str], str]:
+def parse_arguments() -> Tuple[int, str, str, int]:
     """Parse command line arguments."""
     if len(sys.argv) != 5:
-        print("Usage: python translator.py <translation_id> <dump_file> <func_names> <output_file>")
-        print("Example: python translator.py 1 dump.s 'func1,func2' output.so")
+        print("Usage: python translator.py <translation_id> <dump_line> <func_name> <vtype>")
+        print("Example: python translator.py 1 'dump line content' 'func1' 'vtype1'")
         print("Parameters:")
         print("  translation_id: Translation ID number")
-        print("  dump_file: Path to dump fragments file")
-        print("  func_names: Comma-separated function names")
-        print("  output_file: Output assembly path")
+        print("  dump_line: dump line to translate")
+        print("  func_name: function name")
+        print("  vtype: vector type")
         sys.exit(1)
     
     try:
         translation_id = int(sys.argv[1])
-        dump_file = sys.argv[2]
-        func_names = sys.argv[3].split(',')
-        output_file = sys.argv[4]
-        
-        return translation_id, dump_file, func_names, output_file
-    
+        dump_line = sys.argv[2]
+        func_name = sys.argv[3]
+        vtype = int(sys.argv[4])
+
+        return translation_id, dump_line, func_name, vtype
+
     except (ValueError, IndexError) as e:
         print(f"Error parsing arguments: {e}")
         sys.exit(1)
@@ -138,26 +115,15 @@ def parse_arguments() -> Tuple[str, str, list[str], str]:
 def main():
     """Main translation function."""
     # Parse arguments
-    translation_id, dump_file, func_names, output_file = parse_arguments()
+    translation_id, dump_line, func_name, vtype = parse_arguments()
     
     print(f"Translation ID: {translation_id}")
-    print(f"Dump file: {dump_file}")
-    func_names_str = ", ".join(func_names)
-    print(f"Function names: {func_names_str}")
-    print(f"Output file: {output_file}")
+    print(f"Dump line: {dump_line}")
+    print(f"Function name: {func_name}")
+    print(f"Vector type: {vtype}")
     
-    # Read dump file
-    if not os.path.isfile(dump_file):
-        print(f"Error: File not found - {dump_file}", file=sys.stderr)
-        sys.exit(1)
-
     translator = AssemblyTranslator()
-    translator.split_dump_fragments(dump_file)
-    translator.process_fragments(func_names, translation_id)
-    translator.write_to_file(output_file)
-    compiled_output = "\n\n".join(translator.fragments) 
-    print(f"\nTranslation completed successfully: {compiled_output}")
-
+    print(translator.translate_assembly(dump_line, func_name, translation_id, vtype))
 
 if __name__ == "__main__":
     main()

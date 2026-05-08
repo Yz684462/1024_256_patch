@@ -4,8 +4,8 @@
 
 namespace BinaryTranslation {
 
-    Instruction::Instruction(const std::string& opcode, const std::string& operand, uint64_t address, int instrlen): 
-        address(address), opcode(opcode), instrlen(instrlen), isblockbegin(false), isblockend(false), isret(false) {
+    Instruction::Instruction(const std::string& line, const std::string& opcode, const std::string& operand, uint64_t address, int instrlen): 
+        address(address), opcode(opcode), instrlen(instrlen), isblockbegin(false), isblockend(false), isret(false), line(line) {
         
         std::vector<std::string> operandlist;
         std::stringstream ss(operand);

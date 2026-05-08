@@ -17,12 +17,13 @@ namespace BinaryTranslation {
             bool isblockbegin;
             bool isblockend;
             bool isret;
+            std::string line;
 
             // 默认构造函数（Cereal 需要）
             Instruction() : address(0), instrlen(0), isblockbegin(false), 
                             isblockend(false), isret(false) {}
             
-            Instruction(const std::string& opcode, const std::string& operand, 
+            Instruction(const std::string& line, const std::string& opcode, const std::string& operand, 
                         uint64_t address = 0x0000, int instrlen = 0);
             
             // Cereal 序列化方法

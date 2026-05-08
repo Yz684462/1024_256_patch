@@ -6,6 +6,7 @@
 #include <utility>
 #include <map>
 #include <cstdint>
+#include <vector>
 
 #include "types.h"
 
@@ -14,24 +15,12 @@ namespace BinaryTranslation {
         extern uint64_t migration_addr;
     }
 
-    namespace Handle {
-
-        // Handle functions
-        // void migration_handle(ucontext_t *uc, Instruction *fault_instruction);
-        // void translation_handle(ucontext_t *uc, Instruction *fault_instruction);
-        // void function_jump_handle(ucontext_t *uc, Instruction *fault_instruction);
-        // void handle_scalar_register_write(ucontext_t *uc, Instruction *fault_instruction);
-        
-        void handle_translation_function(uint64_t addr_abs);
-        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction);
-
-    } // namespace Handle
-
     namespace Handler {
 
         // Signal handling
         void setup_signal_handler();
         void ebreak_handler(int sig, siginfo_t *info, void *context);
+        void handle_patch_function(uint64_t addr_abs);
 
     } // namespace Handler
 
@@ -66,6 +55,7 @@ namespace BinaryTranslation {
                 // Patch functions
                 void patch_addr(uint64_t addr_abs, Instruction* instr);
                 void restore_addr(uint64_t addr_abs);
+                std::vector<Instruction*> analyze_insts_to_patch(std::vector<Instruction*> insts);
 
             private:
                 Patcher() = default;

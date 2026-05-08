@@ -1,136 +1,87 @@
 #include "vector_translation.h"
-#include "utils.h"
+#include "types.h"
+
 #include <dlfcn.h>
 #include <iostream>
 
 namespace BinaryTranslation {
-namespace TranslationSharedLib {
+    namespace TranslationSharedLib {
 
-TranslationHandleManager& TranslationHandleManager::getInstance() {
-    static TranslationHandleManager instance;
-    return instance;
-}
-
-void call_translation_func(void *translation_handle, uint64_t fault_addr) {
-    std::string func_name = make_func_name(fault_addr);
-    void (*translation_func)() = (void(*)())dlsym(translation_handle, func_name.c_str());
-    if (translation_func == nullptr) {
-        std::cerr << "Failed to load translation function: " << dlerror() << std::endl;
-        return;
-    }
-    translation_func();
-}
-
-std::string make_func_name(uint64_t fault_addr) {
-    return TranslationSharedLib::translation_func_name_prefix + std::to_string(fault_addr);
-}
-
-std::string TranslationHandleManager::make_translation_assembly_name(int translation_id) {
-    int assembly_count = assembly_files_.size();
-    return TranslationSharedLib::translation_assembly_prefix + std::to_string(translation_id) + "_" + std::to_string(assembly_count) + ".s";
-}
-
-std::string make_translation_shared_lib_name(int translation_id) {
-    return TranslationSharedLib::translation_shared_lib_prefix + std::to_string(translation_id) + ".so";
-}
-
-void * TranslationHandleManager::get_current_translation_shared_lib_handle() {
-    TranslationId::TranslationIdManager& id_manager = TranslationId::TranslationIdManager::getInstance();
-    int current_translation_id = id_manager.get_current_translation_id();
-    
-    auto it = id_handle_map_.find(current_translation_id);
-    if (it != id_handle_map_.end()) {
-        return it->second;
-    }
-    
-    return nullptr;
-}
-
-void TranslationHandleManager::update_translation_handle() {
-    TranslationId::TranslationIdManager& id_manager = TranslationId::TranslationIdManager::getInstance();
-    
-    int current_translation_id = id_manager.get_current_translation_id();
-    std::string shared_lib_name = make_translation_shared_lib_name(current_translation_id);
-    
-    // Load the generated shared library and update the handle
-    void *translation_handle = dlopen(shared_lib_name.c_str(), RTLD_LAZY);
-    if (translation_handle == nullptr) {
-        std::cerr << "Failed to load translation shared library: " << dlerror() << std::endl;
-        return;
-    }
-
-    id_handle_map_[current_translation_id] = translation_handle;
-}
-
-void TranslationHandleManager::make_dump_fragments_file(std::vector<std::pair<uint64_t, uint64_t>> ranges, std::string dump_fragments_file_path) {
-    std::vector<std::string> dump_fragments;
-    Dump::DumpAnalyzer& dump_analyzer = Dump::DumpAnalyzer::getInstance();
-    for (const auto& range : ranges) {
-        std::string dump_fragment = "";
-        int line_number_start = dump_analyzer.addr_to_line_number(range.first);
-        int line_number_end = dump_analyzer.addr_to_line_number(range.second);
-        for (int line_number = line_number_start; line_number < line_number_end; line_number++) {
-            dump_fragment += dump_analyzer.extract_line_by_line_number(line_number) + "\n";
+        TranslationHandleManager& TranslationHandleManager::getInstance() {
+            static TranslationHandleManager instance;
+            return instance;
         }
-        dump_fragments.push_back(dump_fragment);
-    }
-    std::string dump_fragment_concat = dump_analyzer.concat_dump_fragments(dump_fragments);
-    dump_analyzer.write_dump_fragment_to_file(dump_fragments_file_path, dump_fragment_concat);
-}
 
-void TranslationHandleManager::gen_translation_shared_lib(std::vector<std::pair<uint64_t, uint64_t>> ranges){
-    TranslationId::TranslationIdManager &id_manager = TranslationId::TranslationIdManager::getInstance();
-    TranslationSharedLib::TranslationHandleManager &handle_manager = TranslationSharedLib::TranslationHandleManager::getInstance();
+        std::string TranslationHandleManager::make_func_name(uint64_t addr_rela) {
+            return "translation_func_" + std::to_string(addr_rela);
+        }
 
-    // Prepare parameters
-    int translation_id = id_manager.get_current_translation_id();
-    std::string dump_fragments_file_path = "dump_fragments_" + std::to_string(translation_id) + ".s";
-    make_dump_fragments_file(ranges, dump_fragments_file_path);
-    std::string translation_func_names = "";
-    for (const auto& range : ranges) {
-        translation_func_names += make_func_name(range.first) + ",";
-    }
-    // Remove trailing comma
-    if (!translation_func_names.empty()) {
-        translation_func_names.pop_back();
-    }
-    std::string translation_assembly_name = handle_manager.make_translation_assembly_name(translation_id);
-
-    std::string command = "python3 scripts/translator.py " + 
-        std::to_string(translation_id) + " " + 
-        dump_fragments_file_path + " " + 
-        translation_func_names + " " + 
-        translation_assembly_name;
+        std::string TranslationHandleManager::make_shared_lib_name(int translation_id) {
+            return "translation_lib_" + std::to_string(translation_id) + ".so";
+        }
         
-    // Execute command
-    int result = system(command.c_str());
-    if (result != 0) {
-        // Handle error if needed
-    }
-    
-    // Add assembly file to list
-    assembly_files_.push_back(translation_assembly_name);
-}
+        std::string TranslationHandleManager::make_assembly_name(int translation_id) {
+            return "translation_asm_" + std::to_string(translation_id) + ".s";
+        }
 
-void TranslationHandleManager::compile_translation_shared_lib() {
-    // Prepare parameters
-    TranslationId::TranslationIdManager& id_manager = TranslationId::TranslationIdManager::getInstance();
-    int translation_id = id_manager.get_current_translation_id();
-    std::string translation_shared_lib_path = make_translation_shared_lib_name(translation_id);
+        void TranslationHandleManager::make_assembly(int translation_id, Instruction* inst, int vtype) {
+            // 准备脚本参数
+            std::string content_to_translate = inst->line;
 
-    // Build command
-    std::string command = "g++ -shared -fPIC -o " + translation_shared_lib_path;
-    for (const auto& assembly_file : assembly_files_) {
-        command += " " + assembly_file;
-    }
-    
-    // Execute command
-    int result = system(command.c_str());
-    if (result != 0) {
-        // Handle error if needed
-    }
-}
+            std::string translation_func_name = make_func_name(inst->address);
 
+            std::string translation_assembly_name = make_assembly_name(translation_id);
 
-} // namespace TranslationSharedLib
+            // 执行脚本
+            std::string command = "python3 scripts/translator.py " + 
+                std::to_string(translation_id) + " " +
+                "\"" + content_to_translate + "\"" + " " + 
+                translation_func_name + " " +
+                vtype + " >> " + 
+                translation_assembly_name;
+            int result_gen_assembly = system(command.c_str());
+            if (result_gen_assembly != 0) {
+                // Handle error if needed
+            }
+        }
+        
+        void *TranslationHandleManager::recompile_handle(int translation_id){
+            // 编译共享库并更新handle map
+            std::string translation_shared_lib_name = make_shared_lib_name(translation_id);
+            std::string translation_assembly_name = make_assembly_name(translation_id);
+
+            std::string command = "g++ -shared -fPIC -o " + translation_shared_lib_name + " " + translation_assembly_name;
+            int result_gen_shared_lib = system(command.c_str());
+            if (result_gen_shared_lib != 0) {
+                // Handle error if needed
+            }
+            
+            void *translation_handle = dlopen(translation_shared_lib_name.c_str(), RTLD_LAZY);
+            if (translation_handle == nullptr) {
+                std::cerr << "Failed to load translation shared library: " << dlerror() << std::endl;
+                return;
+            }
+            return translation_handle;
+        }
+        
+        uint64_t TranslationHandleManager::get_function_address(int translation_id, uint64_t addr_rela){
+            std::string func_name = make_func_name(addr_rela);
+            void *translation_handle = id_handle_map_[translation_id];
+            void *func_ptr = dlsym(translation_handle, func_name.c_str());
+            if (func_ptr == nullptr) {
+                std::cerr << "Failed to load translation function: " << dlerror() << std::endl;
+                return 0;
+            }
+            return (uint64_t)func_ptr;
+        }
+
+        void TranslationHandleManager::update_translation_handle(int translation_id, Instruction* inst, int vtype) {
+            if(id_translated_addrs_map_[translation_id].count(inst->address) == 0) {
+                make_assembly(translation_id, inst, vtype);
+                id_translated_addrs_map_[translation_id].insert(inst->address);
+                void *translation_handle = recompile_handle(translation_id);
+                id_handle_map_[translation_id] = translation_handle;
+            }
+        }
+    } // namespace TranslationSharedLib
 } // namespace BinaryTranslation

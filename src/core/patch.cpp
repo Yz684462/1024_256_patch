@@ -30,8 +30,6 @@ namespace BinaryTranslation {
             }
         }
 
-
-
         Patcher& Patcher::getInstance() {
             static Patcher instance;
             return instance;
@@ -82,6 +80,47 @@ namespace BinaryTranslation {
             __builtin___clear_cache((void*)addr_abs, (void*)(addr_abs + patch_data.inst_len));
 
             addr_patch_data_.erase(it);
+        }
+
+        std::vector<Instruction*> Patcher::analyze_insts_to_patch(std::vector<Instruction*> insts){
+            std::vector<Instruction*> insts_to_patch;
+            std::vector<std::string> supported_vector_opcodes = {
+                "vsetvli", "vsetivli", 
+                "vle64.v", "vle32.v", "vse64.v", "vse32.v",
+                "vlse64.v", "vlse32.v", "vsse64.v", "vsse32.v",
+                "vlseg2e32.v", "vsseg2e32.v", "vlsseg2e32.v", "vssseg2e32.v",
+                "vlseg2e64.v", "vsseg2e64.v", "vlsseg2e64.v", "vssseg2e64.v",
+                "vfmacc.vf", "vfmacc.vv",
+                "vfnmsac.vf",
+                "vfmul.vf",
+                "vadd.vv",
+                "vfmv.v.f",
+                "vfmv.f.s",
+                "vmv4r.v",
+                "vmv.v.i",
+                "vmv.s.x",
+                "vfredusum.vs"
+            };
+            for (auto &inst : insts){
+                if (inst->opcode == "jal" || inst->opcode == "jalr") {
+                    insts_to_patch.push_back(inst);
+                }
+                else if (inst->opcode[0] == 'v' &&
+                     std::find(supported_vector_opcodes.begin(), supported_vector_opcodes.end(), inst->opcode) != supported_vector_opcodes.end()) 
+                {
+                    insts_to_patch.push_back(inst);
+                }
+            }
+
+            // TMP: 调试用的打印信息
+            std::cout << "[DEBUG] insts to patch: " << std::endl;
+            std::cout << "\t" << std::hex;
+            for (auto &inst : insts_to_patch) {
+                std::cout << "0x" << inst->address << " ";
+            }
+            std::cout << std::dec << std::endl;
+
+            return insts_to_patch;
         }
     } // namespace Patch
 } // namespace BinaryTranslation

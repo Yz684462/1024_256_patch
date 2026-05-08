@@ -30,55 +30,65 @@ namespace BinaryTranslation {
             
             Dump::OnlineDumpAnalyzer &dump_analyzer = BinaryTranslation::Dump::OnlineDumpAnalyzer::getInstance();
             Patch::Patcher &patcher = BinaryTranslation::Patch::Patcher::getInstance();
-            
+            auto &transaction_id_manager = BinaryTranslation::TranslationId::TranslationIdManager::getInstance();
+
             Instruction *fault_instruction = dump_analyzer.addr_to_inst(fault_pc);
-            
-            std::cout <<"fault instruction is 0x" << std::hex << fault_instruction->address << " " << fault_instruction->opcode << std::dec << std::endl;
-            
-            //NOTE：现在ebreak的方式，最开始指定的迁移点假设为向量指令，所以下面不取消其插桩
-            if(migrated_threads.find(getpid()) == migrated_threads.end()){
-                // TODO：还有需要执行<拷贝向量状态>
-                // TODO: 
-                // migration_handle的指责应该是对目标指令所在的函数生成翻译代码共享库+进行相应的插桩
-                Handle::handle_translation_function(fault_pc);
-                migrated_threads.insert(getpid());
-            }
-            
-            // Check if it's in patched_addrs
-            if (fault_instruction->opcode == "jal" || fault_instruction->opcode == "jalr") {
-                std::cout << "fault function jump instruction, address = 0x" << std::hex << fault_instruction->address << std::dec << std::endl;
-                // TODO：先找到目标地址
-                uint64_t target_addr = Handle::get_function_jump_target(uc, fault_instruction);
-                // TODO：
-                Instruction *target_instruction = dump_analyzer.addr_to_inst(target_addr);
-                if (target_instruction == nullptr) {
-                    std::cerr << "Error: target instruction not found for function jump at 0x" << std::hex << fault_instruction->address << std::dec << std::endl;
-                    _exit(1);
+            int translation_id = transaction_id_manager.get_current_translation_id();
+
+            if(fault_instruction == nullptr){
+                uint64_t next_pc = transaction_id_manager.get_next_pc_for_translation_id(translation_id);
+                if(next_pc != 0){
+                    uc->uc_mcontext.__gregs[REG_PC] = next_pc;
                 }
-                BinaryTranslation::Handle::handle_translation_function(fault_pc);
-
-                patcher.restore_addr(fault_pc);
-                uc->uc_mcontext.__gregs[REG_PC] = fault_pc;
-                // Handle::function_jump_handle(uc, fault_instruction);
-                // patcher.restore_addr(fault_pc);
-                // uc->uc_mcontext.__gregs[REG_PC] = fault_pc;
-            }  // Error for other cases
-            else if (fault_instruction->opcode[0] == 'v') {
-                std::cout << "fault vector instruction, address = 0x" << std::hex << fault_instruction->address << std::dec << std::endl;
-                // NOTE:现在验证jal/jalr的插桩，所以直接取消向量指令的插桩，返回原向量指令执行
-                patcher.restore_addr(fault_pc);
-                uc->uc_mcontext.__gregs[REG_PC] = fault_pc;
-
-                // Handle::translation_handle(uc, fault_instruction);
-                // uint64_t range_end = patcher.query_range_end(fault_pc);
-                // if (range_end == 0) {
-                //     // TODO: handle error
-                //     _exit(1);
-                // }
-                // uc->uc_mcontext.__gregs[REG_PC] = range_end;
             }
             else{
-                throw std::runtime_error("unsupported opcode in ebreak handler: " + fault_instruction->opcode);
+                std::cout <<"fault instruction is 0x" << std::hex << fault_instruction->address << " " << fault_instruction->opcode << std::dec << std::endl;
+
+                //NOTE：现在ebreak的方式，最开始指定的迁移点假设为向量指令，所以下面不取消其插桩
+                if(migrated_threads.find(getpid()) == migrated_threads.end()){
+                    auto &vector_context_manager = BinaryTranslation::VectorTranslation::VectorContextManager::getInstance();
+                    
+                    vector_context_manager.copy_uc_to_vc(uc, translation_id);
+                    handle_patch_function(fault_pc);
+                    migrated_threads.insert(getpid());
+                }
+                if (fault_instruction->opcode == "jal" || fault_instruction->opcode == "jalr") {
+                    std::cout << "fault function jump instruction, address = 0x" << std::hex << fault_instruction->address << std::dec << std::endl;
+    
+                    uint64_t target_addr = BinaryTranslation::Helper::get_function_jump_target(uc, fault_instruction);
+    
+                    handle_patch_function(target_addr);
+                    patcher.restore_addr(fault_pc);
+                    uc->uc_mcontext.__gregs[REG_PC] = fault_pc;
+                }
+                else if (fault_instruction->opcode[0] == 'v') {
+                    std::cout << "fault vector instruction, address = 0x" << std::hex << fault_instruction->address << std::dec << std::endl;
+                    
+                    auto &translation_handle_manager = BinaryTranslation::TranslationSharedLib::TranslationHandleManager::getInstance();
+                    
+                    int vtype = vector_context_manager.read_vtype_from_vc(translation_id);
+    
+                    translation_handle_manager.update_translation_handle(translation_id, fault_instruction, vtype);
+                    uint64_t translated_func_addr = translation_handle_manager.get_function_address(translation_id, fault_instruction->address);
+                    transaction_id_manager.set_next_pc_for_translation_id(translation_id, fault_pc + fault_instruction->instrlen);
+                    uc->uc_mcontext.__gregs[REG_PC] = translated_func_addr;
+                }
+                else{
+                    throw std::runtime_error("unsupported opcode in ebreak handler: " + fault_instruction->opcode);
+                }
+            }
+            
+        }
+
+        void handle_patch_function(uint64_t addr_abs) {
+            auto& dump_analyzer = BinaryTranslation::Dump::OnlineDumpAnalyzer::getInstance();
+            auto& patcher = BinaryTranslation::Patch::Patcher::getInstance();
+
+            const auto &insts = dump_analyzer.select_func_content(addr_abs);
+            const auto &insts_to_patch = patcher.analyze_insts_to_patch(insts);
+            std::vector<uint64_t> addrs_to_patch = dump_analyzer.insts_to_abs_addrs(insts_to_patch);
+            for(size_t i = 0; i < addrs_to_patch.size(); i++){
+                patcher.patch_addr(addrs_to_patch[i], insts_to_patch[i]);
             }
         }
 

@@ -1,15 +1,17 @@
 #ifndef VECTOR_TRANSLATION_H
 #define VECTOR_TRANSLATION_H
 
+#include "utils.h"
+
 #include <vector>
 #include <cstdint>
 #include <utility>
 #include <string>
 #include <linux/ptrace.h>
-#include "utils.h"
-
 #include <ucontext.h>
 #include <mutex>
+#include <map>
+#include <set>
 
 namespace BinaryTranslation {
     
@@ -20,6 +22,8 @@ namespace BinaryTranslation {
             public:
                 static TranslationIdManager& getInstance();
                 int get_current_translation_id();
+                void set_next_pc_for_translation_id(int translation_id, uint64_t next_pc);
+                uint64_t get_next_pc_for_translation_id(int translation_id);
 
             private:
                 TranslationIdManager() = default;
@@ -30,52 +34,37 @@ namespace BinaryTranslation {
                 TranslationIdManager& operator=(const TranslationIdManager&) = delete;
                 
                 std::map<pid_t, int> pid_tid_map_;
+                std::map<int, uint64_t> id_next_pc_map_;
                 std::mutex map_mutex_;
                 static int translation_id_counter_;
         };
 
     } // namespace TranslationId
 
-    namespace TranslationRanges {
-        // Translation ranges
-        std::vector<std::pair<uint64_t, uint64_t>> get_translation_ranges(std::vector<CodeBlock*>& code_blocks, uint64_t addr);
-    
-    } // namespace TranslationRanges
-
     namespace TranslationSharedLib {
 
-        // Translation function name prefix
-        constexpr const char* translation_func_name_prefix = "translation_func_";
-        constexpr const char* translation_assembly_prefix = "translation_asm_";
-        constexpr const char* translation_shared_lib_prefix = "translation_lib_";
-
-        // Shared library translation
-        void call_translation_func(void *translation_handle, uint64_t fault_addr);
-        std::string make_func_name(uint64_t fault_addr);
-        std::string make_translation_shared_lib_name(int translation_id);
-        
         class TranslationHandleManager {
             public:
-            static TranslationHandleManager& getInstance();
-                void *get_current_translation_shared_lib_handle();
-                void update_translation_handle();
-                void gen_translation_shared_lib(std::vector<std::pair<uint64_t, uint64_t>> ranges);
-                void compile_translation_shared_lib();
-                std::string make_translation_assembly_name(int translation_id);
+                static TranslationHandleManager& getInstance();
+                void update_translation_handle(int translation_id, Instruction* inst, int vtype);
+                uint64_t get_function_address(int translation_id, uint64_t addr_rela);
             
             private:
+                std::map<int, std::set<uint64_t>> id_translated_addrs_map_;
+                std::map<int, void*> id_handle_map_;
+
+                std::string make_func_name(uint64_t fault_addr);
+                std::string make_shared_lib_name(int translation_id);
+                std::string make_assembly_name(int translation_id);
+                void make_assembly(int translation_id, Instruction* inst, int vtype);
+                void *recompile_handle(int translation_id);
+
                 TranslationHandleManager() = default;
                 ~TranslationHandleManager() = default;
                 
                 // Delete copy constructor and assignment operator
                 TranslationHandleManager(const TranslationHandleManager&) = delete;
                 TranslationHandleManager& operator=(const TranslationHandleManager&) = delete;
-
-            public:
-                void make_dump_fragments_file(std::vector<std::pair<uint64_t, uint64_t>> ranges, std::string dump_fragments_file_path);
-
-                std::map<int, void*> id_handle_map_;
-                std::vector<std::string> assembly_files_;
         };
 
     } // namespace TranslationSharedLib
@@ -89,17 +78,16 @@ namespace BinaryTranslation {
                 static VectorContextManager& getInstance();
                 void copy_uc_to_vc(ucontext_t *uc, int translation_id/*, uint32_t uc_mask*/);
                 void copy_vc_to_uc(int translation_id, ucontext_t *uc/*, uint32_t vc_mask*/);
-                uint64_t read_vl_from_vc(int translation_id);
+                int read_vtype_from_vc(int translation_id);
             private:
                 VectorContextManager();
-                ~VectorContextManager();
                 
                 // Delete copy constructor and assignment operator
                 VectorContextManager(const VectorContextManager&) = delete;
                 VectorContextManager& operator=(const VectorContextManager&) = delete;
 
                 
-                void* vc_pool_;
+                uint8_t * vc_pool_;
         };
             
             
@@ -107,5 +95,4 @@ namespace BinaryTranslation {
         
 } // namespace BinaryTranslation
     
-struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc);
 #endif // VECTOR_TRANSLATION_H

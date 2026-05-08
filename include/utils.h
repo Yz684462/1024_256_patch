@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <ucontext.h>
+#include <linux/ptrace.h>
+#include <cstdint>
 
 #include "types.h"
 
@@ -14,7 +17,8 @@ namespace BinaryTranslation {
     namespace Helper {
         int reg_name_to_num(std::string reg_name);
         uint64_t get_shared_lib_base_addr(const std::string& shared_lib_name);
-        void write_content_to_file(const std::string& filename, const std::string& content);
+        struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc);
+        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction);
     } // namespace Helper
 
     namespace Dump {
@@ -26,14 +30,8 @@ namespace BinaryTranslation {
 
         class BaseDumpAnalyzer{
             public:
-                // dump文件内容
-                std::vector<std::string> lines;
-            
                 // 地址 -> 指令智能指针
                 std::map<uint64_t, std::shared_ptr<Instruction>> addr2inst;
-                
-                // 地址 -> 行号
-                std::map<uint64_t, int> addr2line_number;
                 
                 // 地址 -> 函数名
                 std::map<uint64_t, std::string> addr2func_name;
@@ -68,7 +66,6 @@ namespace BinaryTranslation {
                 std::vector<Instruction*> select_func_content(uint64_t addr_inside_abs);
                 Instruction* addr_to_inst(uint64_t addr_abs);
                 std::vector<uint64_t> insts_to_abs_addrs(const std::vector<Instruction*>& insts);
-                std::string extract_line_by_line_number(long unsigned int line_number);
         };
     } // namespace Dump
 

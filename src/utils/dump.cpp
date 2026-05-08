@@ -17,10 +17,8 @@ namespace BinaryTranslation {
     namespace Dump {
         void BaseDumpAnalyzer::clear_data(){
             addr2inst.clear();
-            addr2line_number.clear();
             addr2func_name.clear();
             func_name2insts.clear();
-            lines.clear();
         }
 
         void OfflineDumpAnalyzer::scan_dump_file(const std::string& filename) {
@@ -32,12 +30,9 @@ namespace BinaryTranslation {
             }
             
             std::string line;
-            int line_number = -1;
             std::string current_func_name;
             
             while (std::getline(file, line)) {
-                line_number++;
-                lines.push_back(line);
                 
                 if (line.empty() || line.find_first_not_of(" \t") == std::string::npos) {
                     continue;
@@ -110,10 +105,9 @@ namespace BinaryTranslation {
                             int instrlen = machine_code.length() / 2;
                             
                             // 使用 make_shared 创建智能指针
-                            auto instr = std::make_shared<Instruction>(opcode, operand_str, address, instrlen);
+                            auto instr = std::make_shared<Instruction>(line, opcode, operand_str, address, instrlen);
                             
                             addr2inst[address] = instr;
-                            addr2line_number[address] = line_number;
                             addr2func_name[address] = current_func_name;
                             
                             if (!current_func_name.empty()) {
@@ -142,17 +136,17 @@ namespace BinaryTranslation {
             switch (format) {
                 case SaveFormat::Binary: {
                     cereal::BinaryOutputArchive archive(file);
-                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    archive(addr2inst, addr2func_name, func_name2insts);
                     break;
                 }
                 case SaveFormat::JSON: {
                     cereal::JSONOutputArchive archive(file);
-                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    archive(addr2inst, addr2func_name, func_name2insts);
                     break;
                 }
                 case SaveFormat::XML: {
                     cereal::XMLOutputArchive archive(file);
-                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    archive(addr2inst, addr2func_name, func_name2insts);
                     break;
                 }
             }
@@ -171,17 +165,17 @@ namespace BinaryTranslation {
             switch (format) {
                 case SaveFormat::Binary: {
                     cereal::BinaryInputArchive archive(file);
-                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    archive(addr2inst, addr2func_name, func_name2insts);
                     break;
                 }
                 case SaveFormat::JSON: {
                     cereal::JSONInputArchive archive(file);
-                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    archive(addr2inst, addr2func_name, func_name2insts);
                     break;
                 }
                 case SaveFormat::XML: {
                     cereal::XMLInputArchive archive(file);
-                    archive(addr2inst, addr2line_number, addr2func_name, func_name2insts, lines);
+                    archive(addr2inst, addr2func_name, func_name2insts);
                     break;
                 }
             }
@@ -219,7 +213,10 @@ namespace BinaryTranslation {
 
         Instruction* OnlineDumpAnalyzer::addr_to_inst(uint64_t addr_abs){
             uint64_t addr = to_rela(addr_abs);
-            return addr2inst[addr].get();
+            if (addr2inst.find(addr) != addr2inst.end()) {
+                return addr2inst[addr].get();
+            }
+            return nullptr;
         }
 
         std::vector<uint64_t> OnlineDumpAnalyzer::insts_to_abs_addrs(const std::vector<Instruction*>& insts) {
@@ -230,12 +227,5 @@ namespace BinaryTranslation {
             return abs_addrs;
         }
 
-        std::string OnlineDumpAnalyzer::extract_line_by_line_number(long unsigned int line_number) {
-            if (line_number >= lines.size()) {
-                std::string ret = "";
-                return ret; // 返回空字符串;
-            }
-            return lines[line_number];
-        }
     } // namespace Dump
 } // namespace BinaryTranslation

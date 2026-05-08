@@ -1,4 +1,6 @@
 #include "utils.h"
+#include "types.h"
+
 #include <unordered_map>
 #include <string>
 #include <link.h>
@@ -50,15 +52,46 @@ namespace BinaryTranslation {
             return base_addr;
         }
 
-        void write_content_to_file(const std::string& filename, const std::string& content) {
-            std::ofstream file(filename);
-            if (!file.is_open()) {
-                std::cerr << "[ERROR] Failed to open file: " << filename << std::endl;
-                throw std::runtime_error("Failed to open file for writing");
+        #define RISCV_V_MAGIC	0x53465457
+        struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc) {
+            struct __riscv_extra_ext_header *ext;
+            struct __riscv_v_ext_state *v_ext_state;
+            
+            ext = (struct __riscv_extra_ext_header *)(&uc->uc_mcontext.__fpregs);
+            if (ext->hdr.magic != RISCV_V_MAGIC) {
+                fprintf(stderr, "bad vector magic: %x\n", ext->hdr.magic);
+                abort();
             }
             
-            file << content;
-            file.close();
+            v_ext_state = (struct __riscv_v_ext_state *)((char *)(ext) + sizeof(*ext));
+            return v_ext_state;
+        }
+
+        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction) {
+            uint64_t target_addr = 0;
+            if (fault_instruction->opcode == "jal"){
+                // 立即数是有符号数
+                auto &dump_analyzer = BinaryTranslation::Dump::OnlineDumpAnalyzer::getInstance();
+                target_addr = dump_analyzer.to_abs(std::stoull(fault_instruction->operands[0], nullptr, 16));
+            }
+            else if(fault_instruction->opcode == "jalr"){
+                std::string target_reg = fault_instruction->operands[1];
+                int target_reg_index = reg_name_to_num(target_reg);
+                if (target_reg_index == -1) {
+                    printf("Error: invalid register name: %s\n", target_reg.c_str());
+                    return 0;
+                }
+                target_addr = uc->uc_mcontext.__gregs[target_reg_index];
+            }
+            else {
+                printf("Error: unsupported opcode: %s\n", fault_instruction->opcode.c_str());
+                return 0;
+            }
+            if (target_addr == 0) {
+                printf("Error: invalid target address: 0\n");
+                return 0;
+            }
+            return target_addr;
         }
     }
 }
