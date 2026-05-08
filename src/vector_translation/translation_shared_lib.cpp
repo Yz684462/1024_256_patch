@@ -37,7 +37,7 @@ namespace BinaryTranslation {
                 std::to_string(translation_id) + " " +
                 "\"" + content_to_translate + "\"" + " " + 
                 translation_func_name + " " +
-                vtype + " >> " + 
+                std::to_string(vtype) + " " + 
                 translation_assembly_name;
             int result_gen_assembly = system(command.c_str());
             if (result_gen_assembly != 0) {
@@ -56,10 +56,15 @@ namespace BinaryTranslation {
                 // Handle error if needed
             }
             
+            auto it = id_handle_map_.find(translation_id);
+            if(it != id_handle_map_.end()){
+                void *old_handle = id_handle_map_[translation_id];
+                dlclose(old_handle);
+            }
             void *translation_handle = dlopen(translation_shared_lib_name.c_str(), RTLD_LAZY);
             if (translation_handle == nullptr) {
                 std::cerr << "Failed to load translation shared library: " << dlerror() << std::endl;
-                return;
+                return nullptr;
             }
             return translation_handle;
         }

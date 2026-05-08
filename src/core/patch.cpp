@@ -2,6 +2,7 @@
 #include <sys/mman.h>
 #include <iostream> 
 #include <cstring>
+#include <algorithm>
 
 
 namespace BinaryTranslation {

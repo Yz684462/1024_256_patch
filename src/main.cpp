@@ -11,7 +11,8 @@ namespace BinaryTranslation {
     uint64_t Migration::migration_addr;
 
     void init_migration(){
-        std::string dump_data_file_name = "dump.bin";
+        std::string dump_data_file_name = "dump_analyze.json";
+        // std::string dump_data_file_name = "dump.bin";
         std::string dump_file_name = "dump.s";
         std::string shared_lib_name = "libggml-cpu.so.0";
 
@@ -21,7 +22,7 @@ namespace BinaryTranslation {
         if (!dump_data_file.good()) {
             auto offline_dump_analyzer = Dump::OfflineDumpAnalyzer();
             offline_dump_analyzer.scan_dump_file(dump_file_name);
-            offline_dump_analyzer.save_to_file(dump_data_file_name, Dump::SaveFormat::Binary);
+            offline_dump_analyzer.save_to_file(dump_data_file_name, Dump::SaveFormat::JSON);
         }
         uint64_t base_addr = Helper::get_shared_lib_base_addr(shared_lib_name);
         if (base_addr == 0) {
@@ -29,11 +30,11 @@ namespace BinaryTranslation {
             return;
         }
         auto& dump_analyzer = Dump::OnlineDumpAnalyzer::getInstance(base_addr);
-        dump_analyzer.load_from_file(dump_data_file_name, Dump::SaveFormat::Binary);
+        dump_analyzer.load_from_file(dump_data_file_name, Dump::SaveFormat::JSON);
 
 
         // patch迁移点
-        uint64_t migration_offset = 0x45e44;
+        uint64_t migration_offset = 0x7eef4;
         
         Migration::migration_addr = base_addr + migration_offset;
         Instruction* migration_instr = dump_analyzer.addr_to_inst(Migration::migration_addr);        

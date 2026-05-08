@@ -29,7 +29,7 @@ namespace BinaryTranslation {
             // Cereal 序列化方法
             template<class Archive>
             void serialize(Archive& archive) {
-                archive(address, opcode, operands, instrlen, jumpto, jumpfrom, 
+                archive(line, address, opcode, operands, instrlen, jumpto, jumpfrom, 
                         isblockbegin, isblockend, isret);
             }
     };

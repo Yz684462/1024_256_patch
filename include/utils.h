@@ -15,7 +15,7 @@
 namespace BinaryTranslation {
 
     namespace Helper {
-        int reg_name_to_num(std::string reg_name);
+        int reg_name_to_num(const std::string& reg_name);
         uint64_t get_shared_lib_base_addr(const std::string& shared_lib_name);
         struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc);
         uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction);

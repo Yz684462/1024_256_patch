@@ -75,7 +75,7 @@ namespace BinaryTranslation {
                 target_addr = dump_analyzer.to_abs(std::stoull(fault_instruction->operands[0], nullptr, 16));
             }
             else if(fault_instruction->opcode == "jalr"){
-                std::string target_reg = fault_instruction->operands[1];
+                const std::string &target_reg = fault_instruction->operands[1];
                 int target_reg_index = reg_name_to_num(target_reg);
                 if (target_reg_index == -1) {
                     printf("Error: invalid register name: %s\n", target_reg.c_str());

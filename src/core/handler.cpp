@@ -28,15 +28,23 @@ namespace BinaryTranslation {
             ucontext_t *uc = (ucontext_t *)context;
             uint64_t fault_pc = (uint64_t)info->si_addr;
             
-            Dump::OnlineDumpAnalyzer &dump_analyzer = BinaryTranslation::Dump::OnlineDumpAnalyzer::getInstance();
-            Patch::Patcher &patcher = BinaryTranslation::Patch::Patcher::getInstance();
-            auto &transaction_id_manager = BinaryTranslation::TranslationId::TranslationIdManager::getInstance();
+            auto &dump_analyzer = BinaryTranslation::Dump::OnlineDumpAnalyzer::getInstance();
+            auto &patcher = BinaryTranslation::Patch::Patcher::getInstance();
+            auto &translation_id_manager = BinaryTranslation::TranslationId::TranslationIdManager::getInstance();
+            auto &vector_context_manager = BinaryTranslation::VectorContext::VectorContextManager::getInstance();
+
 
             Instruction *fault_instruction = dump_analyzer.addr_to_inst(fault_pc);
-            int translation_id = transaction_id_manager.get_current_translation_id();
+            int translation_id = translation_id_manager.get_current_translation_id();
+
+            // FIXME：因为现在有的向量指令的翻译还没有实现，所以暂时需要对每次翻译执行都进行vc和uc的同步，之后可以去掉
+            vector_context_manager.copy_uc_to_vc(uc, translation_id);
+            // FIXME
 
             if(fault_instruction == nullptr){
-                uint64_t next_pc = transaction_id_manager.get_next_pc_for_translation_id(translation_id);
+                std::cout << "back |!!!" << std::endl; 
+                uint64_t next_pc = translation_id_manager.get_next_pc_for_translation_id(translation_id);
+                std::cout << "back | next pc = " << next_pc << std::endl; 
                 if(next_pc != 0){
                     uc->uc_mcontext.__gregs[REG_PC] = next_pc;
                 }
@@ -46,9 +54,9 @@ namespace BinaryTranslation {
 
                 //NOTE：现在ebreak的方式，最开始指定的迁移点假设为向量指令，所以下面不取消其插桩
                 if(migrated_threads.find(getpid()) == migrated_threads.end()){
-                    auto &vector_context_manager = BinaryTranslation::VectorTranslation::VectorContextManager::getInstance();
                     
                     vector_context_manager.copy_uc_to_vc(uc, translation_id);
+
                     handle_patch_function(fault_pc);
                     migrated_threads.insert(getpid());
                 }
@@ -70,13 +78,18 @@ namespace BinaryTranslation {
     
                     translation_handle_manager.update_translation_handle(translation_id, fault_instruction, vtype);
                     uint64_t translated_func_addr = translation_handle_manager.get_function_address(translation_id, fault_instruction->address);
-                    transaction_id_manager.set_next_pc_for_translation_id(translation_id, fault_pc + fault_instruction->instrlen);
+                    std::cout << "fault address = " << fault_instruction->address << "; fault pc = " << fault_pc << "; next pc = " << fault_pc + fault_instruction->instrlen << "; translated_func_addr = " << translated_func_addr << std::endl;
+                    translation_id_manager.set_next_pc_for_translation_id(translation_id, fault_pc + fault_instruction->instrlen);
                     uc->uc_mcontext.__gregs[REG_PC] = translated_func_addr;
                 }
                 else{
                     throw std::runtime_error("unsupported opcode in ebreak handler: " + fault_instruction->opcode);
                 }
             }
+
+            // FIXME：因为现在有的向量指令的翻译还没有实现，所以暂时需要对每次翻译执行都进行vc和uc的同步，之后可以去掉
+            vector_context_manager.copy_vc_to_uc(translation_id, uc);
+            // FIXME
             
         }
 

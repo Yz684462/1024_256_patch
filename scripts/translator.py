@@ -38,7 +38,6 @@ class AssemblyTranslator:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.s', delete=False) as f:
             f.write(asm_content)
             temp_file = f.name
-        
         insn_list = parser.parse_file(temp_file)
         
         output = translate_function(
@@ -63,8 +62,8 @@ class AssemblyTranslator:
                 continue
             if '.comm' in line and 'simulated_cpu_state' in line:
                 continue
-            if ' ret ' in line:
-                modified_lines.append('ebreak')
+            if line.endswith(' ret'):
+                modified_lines.append("\tebreak")
                 continue
             modified_lines.append(line)
             if '.type' in line and f'translated_function_' in line:
@@ -81,22 +80,22 @@ class AssemblyTranslator:
         else:
             # Need to use li + add sequence for large offsets
             replacement = f'\\1\n\tli\tt0, {offset}\n\tadd\tt6, t6, t0'
-        
         translated = re.sub(pattern, replacement, translated)
-
+        
         return translated
 
 
-def parse_arguments() -> Tuple[int, str, str, int]:
+def parse_arguments() -> Tuple[int, str, str, int, str]:
     """Parse command line arguments."""
-    if len(sys.argv) != 5:
-        print("Usage: python translator.py <translation_id> <dump_line> <func_name> <vtype>")
-        print("Example: python translator.py 1 'dump line content' 'func1' 'vtype1'")
+    if len(sys.argv) != 6:
+        print("Usage: python translator.py <translation_id> <dump_line> <func_name> <vtype> <assembly_file>")
+        print("Example: python translator.py 1 'dump line content' 'func1' 'vtype1' 'assembly_file'")
         print("Parameters:")
         print("  translation_id: Translation ID number")
         print("  dump_line: dump line to translate")
         print("  func_name: function name")
         print("  vtype: vector type")
+        print("  assembly_file: output assembly_file path")
         sys.exit(1)
     
     try:
@@ -104,8 +103,8 @@ def parse_arguments() -> Tuple[int, str, str, int]:
         dump_line = sys.argv[2]
         func_name = sys.argv[3]
         vtype = int(sys.argv[4])
-
-        return translation_id, dump_line, func_name, vtype
+        assembly_file = sys.argv[5]
+        return translation_id, dump_line, func_name, vtype, assembly_file
 
     except (ValueError, IndexError) as e:
         print(f"Error parsing arguments: {e}")
@@ -115,15 +114,14 @@ def parse_arguments() -> Tuple[int, str, str, int]:
 def main():
     """Main translation function."""
     # Parse arguments
-    translation_id, dump_line, func_name, vtype = parse_arguments()
-    
-    print(f"Translation ID: {translation_id}")
-    print(f"Dump line: {dump_line}")
-    print(f"Function name: {func_name}")
-    print(f"Vector type: {vtype}")
+    translation_id, dump_line, func_name, vtype, assembly_file = parse_arguments()
     
     translator = AssemblyTranslator()
-    print(translator.translate_assembly(dump_line, func_name, translation_id, vtype))
+    with open(assembly_file, 'a') as f:
+        output = translator.translate_assembly(dump_line, func_name, translation_id, vtype)
+        f.write("\n")
+        f.write(output)
+        f.write("\n")
 
 if __name__ == "__main__":
     main()
